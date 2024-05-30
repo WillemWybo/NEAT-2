@@ -964,6 +964,140 @@ class NeuronSimTree(PhysTree):
                 zk_mat[:, ii, jj] = v_trans / (i_amp * dt_pulse)
         return res['t'][i0+dstep:-1+dstep], zk_mat
 
+class NeuronSimNodeWith3DCoords(NeuronSimNode):
+    def __init__(self, index, p3d=None):
+        super().__init__(index, p3d)
+
+    def _makeSection(self, factorlambda=1., pprint=False):
+        compartment = h.Section(name=str(self.index))
+        compartment.push()
+        # create the compartment
+        if self.index == 1:
+            # center coords of root node
+            xc, yc, zc = self.xyz
+            # construct cylinder L=2R, diam=2R in x direction
+            x0 = xc - self.R
+            x1 = xc + self.R
+            diam = 2. * self.R
+            compartment.pt3dadd(x0, yc, zc, diam)
+            compartment.pt3dadd(x1, yc, zc, diam)
+            compartment.nseg = 1
+        else:
+            # center coords of node start (0) and end (1)
+            x0, y0, z0 = self.parent_node.xyz
+            x1, y1, z1 = self.xyz
+            diam = 2. * self.R
+            compartment.pt3dadd(x0, y0, z0, diam)
+            compartment.pt3dadd(x1, y1, z1, diam)
+            # set number of segments
+            if type(factorlambda) == float:
+                # nseg according to NEURON bookint
+                compartment.nseg = int(((compartment.L / (0.1 * h.lambda_f(100.)) + 0.9) / 2.) * 2. + 1.) * int(factorlambda)
+            else:
+                compartment.nseg = factorlambda
+
+        # set parameters
+        compartment.cm = self.c_m # uF/cm^2
+        compartment.Ra = self.r_a*1e6 # MOhm*cm --> Ohm*cm
+        # insert membrane currents
+        for key, current in self.currents.items():
+            if current[0] > 1e-10:
+                try:
+                    compartment.insert(mechname[key])
+                except ValueError as e:
+                    raise ValueError(str(e) + f" {mechname[key]}")
+                for seg in compartment:
+                    exec('seg.' + mechname[key] + '.g = ' + str(current[0]) + '*1e-6') # uS/cm^2 --> S/cm^2
+                    exec('seg.' + mechname[key] + '.e = ' + str(current[1])) # mV
+        # insert concentration mechanisms
+        for ion, params in self.concmechs.items():
+            compartment.insert(mechname[ion])
+            for seg in compartment:
+                for param, value in params.items():
+                    if param == 'gamma':
+                        value *= 1e6
+                    exec('seg.' + mechname[ion] + '.' + param + ' = ' + str(value))
+        h.pop_section()
+
+        if pprint:
+            print(self)
+            print(('>>> compartment length = %.2f um'%compartment.L))
+            print(('>>> compartment diam = %.2f um'%compartment.diam))
+            print(('>>> compartment nseg = ' + str(compartment.nseg)))
+
+        return compartment
+
+class NeuronSimTreeWith3DCoords(NeuronSimTree):
+    """
+    Tree class to define NEURON (Carnevale & Hines, 2004) based on `neat.PhysTree`.
+
+    Attributes
+    ----------
+    sections: dict of hoc sections
+        Storage for hoc sections. Keys are node indices.
+    shunts: list of hoc mechanisms
+        Storage container for shunts
+    syns: list of hoc mechanisms
+        Storage container for synapses
+    iclamps: list of hoc mechanisms
+        Storage container for current clamps
+    vclamps: lis of hoc mechanisms
+        Storage container for voltage clamps
+    vecstims: list of hoc mechanisms
+        Storage container for vecstim objects
+    netcons: list of hoc mechanisms
+        Storage container for netcon objects
+    vecs: list of hoc vectors
+        Storage container for hoc spike vectors
+    dt: float
+        timestep of the simulator ``[ms]``
+    t_calibrate: float
+        Time for the model to equilibrate``[ms]``. Not counted as part of the
+        simulation.
+    factor_lambda : int or float
+        If int, the number of segments per section. If float, multiplies the
+        number of segments given by the standard lambda rule (Carnevale, 2004)
+        to give the number of compartments simulated (default value 1. gives
+        the number given by the lambda rule)
+    v_init: float
+        The initial voltage at which the model is initialized ``[mV]``
+
+    A `NeuronSimTree` can be extended easily with custom point process mechanisms.
+    Just make sure that you store the point process in an existing appropriate
+    storage container or in a custom storage container, since if all references
+    to the hocobject disappear, the object itself will be deleted as well.
+
+    .. code-block:: python
+        class CustomSimTree(NeuronSimTree):
+            def addCustomPointProcessMech(self, loc, **kwargs):
+                loc = MorphLoc(loc, self)
+
+                # create the point process
+                pp = h.custom_point_process(self.sections[loc['node']](loc['x']))
+                pp.arg1 = kwargs['arg1']
+                pp.arg2 = kwargs['arg2']
+                ...
+
+                self.storage_container_for_point_process.append(pp)
+
+    If you define a custom storage container, make sure that you overwrite the
+    `__init__()` and `deleteModel()` functions to make sure it is created and
+    deleted properly.
+    """
+    def __init__(self, file_n=None, types=[1,3,4], t_calibrate=0., dt=0.025, v_init=-75.):
+        super().__init__(file_n=file_n, types=types,
+                         t_calibrate=t_calibrate, dt=dt, v_init=v_init)
+        
+    def _createCorrespondingNode(self, node_index, p3d=None):
+        """
+        Creates a node with the given index corresponding to the tree class.
+
+        Parameters
+        ----------
+            node_index: int
+                index of the new node
+        """
+        return NeuronSimNodeWith3DCoords(node_index, p3d=p3d)
 
 class NeuronCompartmentNode(NeuronSimNode):
     def __init__(self, index):
