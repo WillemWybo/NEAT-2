@@ -500,11 +500,11 @@ class PhysTree(MorphTree):
             Defaults to None
         """
         for node in self.convert_node_arg_to_nodes(node_arg):
-            c_m = self._distr_2_float(c_m, node, argname='`c_m`')
-            r_a = self._distr_2_float(r_a, node, argname='`r_a`')
-            g_s = self._distr_2_float(g_s, node, argname='`g_s`') if \
+            c_m_ = self._distr_2_float(c_m, node, argname='`c_m`')
+            r_a_ = self._distr_2_float(r_a, node, argname='`r_a`')
+            g_s_ = self._distr_2_float(g_s, node, argname='`g_s`') if \
                   g_s is not None else 0.
-            node.set_physiology(c_m, r_a, g_s)
+            node.set_physiology(c_m_, r_a_, g_s_)
 
     @comptree_removal_decorator
     def set_leak_current(self, g_l, e_l, node_arg=None):
@@ -533,9 +533,9 @@ class PhysTree(MorphTree):
             Defaults to None
         """
         for node in self.convert_node_arg_to_nodes(node_arg):
-            g_l = self._distr_2_float(g_l, node, argname='`g_l`')
-            e_l = self._distr_2_float(e_l, node, argname='`e_l`')
-            node._add_current('L', g_l, e_l)
+            g_l_ = self._distr_2_float(g_l, node, argname='`g_l`')
+            e_l_ = self._distr_2_float(e_l, node, argname='`e_l`')
+            node._add_current('L', g_l_, e_l_)
 
     @comptree_removal_decorator
     def add_channel_current(self, channel, g_max, e_rev, node_arg=None):
@@ -576,9 +576,9 @@ class PhysTree(MorphTree):
 
         # add the ion channel to the nodes
         for node in self.convert_node_arg_to_nodes(node_arg):
-            g_max = self._distr_2_float(g_max, node, argname='`g_max`')
-            e_rev = self._distr_2_float(e_rev, node, argname='`e_rev`')
-            node._add_current(channel_name, g_max, e_rev)
+            g_max_ = self._distr_2_float(g_max, node, argname='`g_max`')
+            e_rev_ = self._distr_2_float(e_rev, node, argname='`e_rev`')
+            node._add_current(channel_name, g_max_, e_rev_)
 
     def get_channels_in_tree(self):
         """
@@ -646,10 +646,10 @@ class PhysTree(MorphTree):
             Defaults to None
         """
         for node in self.convert_node_arg_to_nodes(node_arg):
-            e_eq_target = self._distr_2_float(e_eq_target, node, argname='`g_max`')
-            tau_m_target = self._distr_2_float(tau_m_target, node, argname='`e_rev`')
-            assert tau_m_target > 0.
-            node.fit_leak_current(e_eq_target=e_eq_target, tau_m_target=tau_m_target,
+            e_eq_target_ = self._distr_2_float(e_eq_target, node, argname='`g_max`')
+            tau_m_target_ = self._distr_2_float(tau_m_target, node, argname='`e_rev`')
+            assert tau_m_target_ > 0.
+            node.fit_leak_current(e_eq_target=e_eq_target_, tau_m_target=tau_m_target_,
                                 channel_storage=self.channel_storage)
 
     def _evaluate_comp_criteria(self, node, eps=1e-8, rbool=False):
