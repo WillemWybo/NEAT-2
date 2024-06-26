@@ -213,6 +213,8 @@ class TestMorphTree():
                 pass
         for node in self.tree:
             assert not node.used_in_comp_tree
+        assert self.tree.root == self.tree._original_root
+        assert self.tree._computational_root is None
 
     def test_input_arg_conversion(self):
         self.load_tree()
@@ -684,7 +686,22 @@ class TestMorphTree():
         self.tree[4].R += 1e-2
         self.tree.set_comp_tree()
         with self.tree.as_computational_tree:
-            for node in self.tree: assert node.index in [1,5,8,10,12]
+            for node in self.tree: 
+                assert node.index in [1,5,8,10,12]
+
+        # test dx_min
+        self.tree.set_comp_tree(dx_min=150)
+        with self.tree.as_computational_tree:
+            for node in self.tree: 
+                assert node.index in [1,5,8,10,12]
+
+        self.tree.set_comp_tree(dx_min=250)
+        with self.tree.as_computational_tree:
+            for node in self.tree: 
+                assert node.index in [1,8,10,12]
+
+        # test remove comp tree
+
 
 
     def test_one_point_soma(self):
@@ -784,18 +801,18 @@ class TestMorphTree():
 
 if __name__ == '__main__':
     tmt = TestMorphTree()
-    tmt.test_string_representation()
-    tmt.test_plotting(pshow=True)
-    tmt.test_comp_tree_0()
-    tmt.test_input_arg_conversion()
-    tmt.test_loc_functionality()
-    tmt.test_unique_locs()
-    tmt.test_loc_storage_retrieval_lookup()
-    tmt.test_nearest_neighbours()
+    # tmt.test_string_representation()
+    # tmt.test_plotting(pshow=True)
+    # tmt.test_comp_tree_0()
+    # tmt.test_input_arg_conversion()
+    # tmt.test_loc_functionality()
+    # tmt.test_unique_locs()
+    # tmt.test_loc_storage_retrieval_lookup()
+    # tmt.test_nearest_neighbours()
     tmt.test_comp_tree()
-    tmt.test_multi_cylinder_soma()
-    tmt.test_one_point_soma()
-    tmt.test_three_point_soma()
-    tmt.test_wrong_soma()
-    tmt.test_copy_construct()
-    tmt.test_root_modification()
+    # tmt.test_multi_cylinder_soma()
+    # tmt.test_one_point_soma()
+    # tmt.test_three_point_soma()
+    # tmt.test_wrong_soma()
+    # tmt.test_copy_construct()
+    # tmt.test_root_modification()

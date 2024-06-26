@@ -524,7 +524,7 @@ class STree(object):
             node: `neat.SNode`
                 node to be removed
         """
-        if node == self.root:
+        if self.is_root(node):
             raise ValueError('Removing root is forbidden')
         cnodes = node.get_child_nodes()
         pnode = node.get_parent_node()

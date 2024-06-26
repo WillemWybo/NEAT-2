@@ -67,21 +67,14 @@ class TestConcMechs:
             # ca concentration mech
             tree.add_conc_mech(
                 "ca",
-                params={
-                    "tau": 605.033222,
-                    # "tau": 20.715642,
-                    "gamma": gamma_factor * 0.000893 * 1e4 / (2.0 * 0.1 * neuron.h.FARADAY) * 1e-6,
-                    # "gamma": 0.,
-                },
+                tau = 605.033222,
+                gamma = gamma_factor * 0.000893 * 1e4 / (2.0 * 0.1 * neuron.h.FARADAY) * 1e-6,
                 node_arg=[tree[1]],
             )
             tree.add_conc_mech(
                 "ca",
-                params={
-                    "tau": 20.715642,
-                    # "tau": 605.033222,
-                    "gamma": gamma_factor * 0.003923 * 1e4 / (2.0 * 0.1 * neuron.h.FARADAY) * 1e-6,
-                },
+                tau = 20.715642,
+                gamma = gamma_factor * 0.003923 * 1e4 / (2.0 * 0.1 * neuron.h.FARADAY) * 1e-6,
                 node_arg="axonal",
             )
         else:
@@ -95,18 +88,14 @@ class TestConcMechs:
             # without inserting the mechanism
             tree.add_conc_mech(
                 "ca",
-                params={
-                    "tau": 1e20,
-                    "gamma": 0.,
-                },
+                tau = 1e20,
+                gamma = 0.,
                 node_arg=[tree[1]],
             )
             tree.add_conc_mech(
                 "ca",
-                params={
-                    "tau": 1e20,
-                    "gamma": 0.,
-                },
+                tau = 1e20,
+                gamma = 0.,
                 node_arg="axonal",
             )
 
@@ -139,10 +128,8 @@ class TestConcMechs:
         # ca concentration mech
         tree.add_conc_mech(
             "ca",
-            params={
-                "tau": 605.033222,
-                "gamma": gamma_factor * 0.000893 * 1e4 / (2.0 * 0.1 * neuron.h.FARADAY) * 1e-6,
-            },
+            tau = 605.033222,
+            gamma = gamma_factor * 0.000893 * 1e4 / (2.0 * 0.1 * neuron.h.FARADAY) * 1e-6,
             node_arg=[tree[1]],
         )
 
@@ -180,10 +167,8 @@ class TestConcMechs:
         # ca concentration mech
         tree.add_conc_mech(
             "ca",
-            params={
-                "tau": 605.033222,
-                "gamma": gamma_factor * 0.000893 * 1e4 / (2.0 * 0.1 * neuron.h.FARADAY) * 1e-6,
-            },
+            tau = 605.033222,
+            gamma = gamma_factor * 0.000893 * 1e4 / (2.0 * 0.1 * neuron.h.FARADAY) * 1e-6,
             node_arg=[tree[1]],
         )
 
@@ -220,10 +205,8 @@ class TestConcMechs:
             # ca concentration mech
             tree.add_conc_mech(
                 "ca",
-                params={
-                    "tau": 605.033222,
-                    "gamma": gamma_factor * 0.000893 * 1e4 / (2.0 * 0.1 * neuron.h.FARADAY)*1e-6, # 1/mA -> 1/nA
-                },
+                tau = 605.033222,
+                gamma = gamma_factor * 0.000893 * 1e4 / (2.0 * 0.1 * neuron.h.FARADAY)*1e-6, # 1/mA -> 1/nA
                 node_arg=[tree[1]],
             )
         else:
@@ -237,10 +220,8 @@ class TestConcMechs:
             # without inserting the mechanism
             tree.add_conc_mech(
                 "ca",
-                params={
-                    "tau": 100.,
-                    "gamma": 0.,
-                },
+                tau = 100.,
+                gamma = 0.,
                 node_arg=[tree[1]],
             )
 

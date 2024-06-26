@@ -288,6 +288,32 @@ class TestPhysTree():
         self.tree.set_comp_tree()
         with self.tree.as_computational_tree:
             assert [n.index for n in self.tree] == [1,5,6,7,8,9,10,12]
+        # concentration mechanims 1
+        self.load_tree(reinitialize=1, segments=True)
+        c_m = 1.; r_a = 100.*1e-6
+        self.tree.set_physiology(c_m, r_a)
+        self.tree.add_conc_mech('ca', gamma=0.004, tau=100., node_arg=[self.tree[4]])
+        self.tree.set_comp_tree()
+        with self.tree.as_computational_tree:
+            assert [n.index for n in self.tree] == [1,4,8,10,12]
+        # concentration mechanims 2
+        self.load_tree(reinitialize=1, segments=True)
+        c_m = 1.; r_a = 100.*1e-6
+        self.tree.set_physiology(c_m, r_a)
+        self.tree.add_conc_mech('ca', gamma=0.004, tau=100., node_arg=[self.tree[4], self.tree[5]])
+        self.tree.set_comp_tree()
+        with self.tree.as_computational_tree:
+            assert [n.index for n in self.tree] == [1,5,8,10,12]
+        # concentration mechanims 3
+        self.load_tree(reinitialize=1, segments=True)
+        c_m = 1.; r_a = 100.*1e-6
+        self.tree.set_physiology(c_m, r_a)
+        self.tree.add_conc_mech('ca', gamma=0.004, tau=100., node_arg=[self.tree[4]])
+        self.tree.add_conc_mech('ca', gamma=0.004, tau=110., node_arg=[self.tree[5]])
+        self.tree.set_comp_tree()
+        with self.tree.as_computational_tree:
+            assert [n.index for n in self.tree] == [1,4,5,8,10,12]
+
 
     def test_create_new_tree(self):
         self.load_tree(reinitialize=1, segments=True)
@@ -362,7 +388,7 @@ class TestPhysTree():
         # fit a compartmenttree to the same locations
         ctree_fd, locs_fd = self.tree.create_finite_difference_tree(dx_max=22.)
         cfit = CompartmentFitter(self.tree, save_cache=False)
-        ctree_fit = cfit.fit_model(locs_fd)
+        ctree_fit, _ = cfit.fit_model(locs_fd)
 
         # check whether both trees have the same parameters
         for node_fd, node_fit in zip(ctree_fd, ctree_fit):
@@ -403,12 +429,10 @@ class TestPhysTree():
         # set computational tree
         self.tree.set_comp_tree()
 
-        # print(4*np.pi*self.tree[1].R**2*self.tree[1].currents['L'][0]*1e-8)
-
         # fit a compartmenttree to the same locations
         ctree_fd, locs_fd = self.tree.create_finite_difference_tree(dx_max=22.)
         cfit = CompartmentFitter(self.tree, save_cache=False)
-        ctree_fit = cfit.fit_model(locs_fd)
+        ctree_fit, _ = cfit.fit_model(locs_fd)
         # check whether both trees have the same parameters
         for node_fd, node_fit in zip(ctree_fd, ctree_fit):
 

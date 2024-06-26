@@ -306,12 +306,9 @@ class CompartmentFitter(EquilibriumTree):
             # use the default parameters
             for ion in self.ions:
                 if ion in concmechs:
-                    cparams = {
-                        pname: pval for pname, pval in concmechs[ion].items()
-                    }
-                    node.add_conc_mech(ion, **cparams)
+                    node.add_conc_mech(ion, tau=concmechs[ion].tau)
                 else:
-                    node.add_conc_mech(ion, **self.concmech_cfg.exp_conc_mech)
+                    node.add_conc_mech(ion, tau=self.concmech_cfg.exp_conc_mech["tau"])
 
         return ctree, locs
 

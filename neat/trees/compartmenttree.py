@@ -117,7 +117,7 @@ class CompartmentNode(SNode):
         """
         self.currents[channel_name] = [0., e_rev]
 
-    def add_conc_mech(self, ion, **kwargs):
+    def add_conc_mech(self, ion, tau=100.):
         """
         Add a concentration mechanism at this node.
 
@@ -129,13 +129,7 @@ class CompartmentNode(SNode):
             parameters for the concentration mechanism that are not used in the
             fits (only used for NEURON model)
         """
-        if 'tau' in kwargs:
-            self.concmechs[ion] = concmechs.ExpConcMech(
-                ion, kwargs['tau'], 0.
-            )
-        else:
-            warnings.warn('These parameters do not match any NEAT concentration ' + \
-                          'mechanism, no concentration mechanism has been added', UserWarning)
+        self.concmechs[ion] = concmechs.ExpConcMech(ion, tau, 0.)
 
     def set_expansion_point(self, channel_name, statevar):
         """
@@ -817,7 +811,7 @@ class CompartmentTree(STree):
         for ii, node in enumerate(self):
             node._add_current(channel_name, e_rev)
 
-    def add_conc_mech(self, ion, params={}):
+    def add_conc_mech(self, ion, tau=100.):
         """
         Add a concentration mechanism to the tree
 
@@ -825,10 +819,10 @@ class CompartmentTree(STree):
         ----------
         ion: string
             the ion the mechanism is for
-        params: dict
-            parameters for the concentration mechanism
+        tau: float
+            The time scale of the `neat.ExpConcMech` [ms]
         """
-        for node in self: node.add_conc_mech(ion, params=params)
+        for node in self: node.add_conc_mech(ion, tau=tau)
 
     def permute_to_tree_idxs(self):
         """

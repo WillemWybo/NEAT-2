@@ -241,7 +241,7 @@ class MorphLoc(object):
     def _set_original_loc(self):
         if self.comp_loc['node'] != 1:
             with self.reftree.as_computational_tree:
-                compnode = self.reftree[self.comp_loc['node']]
+                comp_node = self.reftree[self.comp_loc['node']]
             with self.reftree.as_original_tree:
                 node = self.reftree[self.comp_loc['node']]
                 # find the computational node that is down from the original node
@@ -251,7 +251,7 @@ class MorphLoc(object):
                 L0 = 0. ; found = False
                 for pathnode in path[1:]:
                     L1 = L0 + pathnode.L
-                    Lloc = self.comp_loc['x']*compnode.L
+                    Lloc = self.comp_loc['x']*comp_node.L
                     if Lloc == 0.: Lloc += 1e-7
                     if Lloc > L0 and Lloc <= L1:
                         self.loc = {'node': pathnode.index,
@@ -973,7 +973,7 @@ class MorphTree(STree):
         ----------
         node: `neat.MorphNode`
             node that is compared to parent node
-        eps: float (optional, default ``1e-8``)
+        eps: float
             the margin
 
         return
@@ -981,16 +981,47 @@ class MorphTree(STree):
         bool
         """
         if not rbool:
-            rbool = node.parent_node == None
-        if not rbool:
-            rbool = len(node.get_child_nodes()) != 1
-        if not rbool:
             cnode = node.child_nodes[0]
             rbool = np.abs(node.R - cnode.R) > eps * np.max([node.R, cnode.R])
 
         return rbool
+    
+    def _add_comp_nodes(self, node, parent_comp_node=None, eps=1e-8, dx_min=15., provided_comp_nodes=[], comp_nodes=[]):
+        
+        add_node_to_comp_tree = node in provided_comp_nodes
 
-    def set_comp_tree(self, compnodes=None, eps=1e-8):
+        if not add_node_to_comp_tree:
+            add_node_to_comp_tree = node.parent_node == None
+        if not add_node_to_comp_tree:
+            add_node_to_comp_tree = len(node.child_nodes) != 1
+
+        # path length criterium overrules the parameter difference criterium, so if
+        # `add_node_to_comp_tree` is False, then we don't evaluate the parameter
+        # criterium
+        if not add_node_to_comp_tree:
+            # if this point is reached in the recursive call, parent_comp_node should never be None
+            dx = self.path_length((node.index, 1.), (parent_comp_node.index, 1.))
+
+            add_node_to_comp_tree = all((
+                self._evaluate_comp_criteria(node, eps=eps),
+                dx > dx_min
+            ))
+
+        if add_node_to_comp_tree:
+            comp_nodes.append(node)
+            parent_comp_node = node 
+
+        for child_node in node.child_nodes:
+            comp_nodes = self._add_comp_nodes(
+                child_node, parent_comp_node, 
+                eps=eps, dx_min=dx_min, 
+                provided_comp_nodes=provided_comp_nodes,
+                comp_nodes=comp_nodes
+            )
+        
+        return comp_nodes
+
+    def set_comp_tree(self, comp_nodes=None, eps=1e-8, dx_min=15.):
         """
         Sets the nodes that contain computational parameters. This are a priori
         either bifurcations, leafs, the root or nodes where the neurons'
@@ -998,23 +1029,31 @@ class MorphTree(STree):
 
         Parameters
         ----------
-            compnodes: list of ::class::`MorphNode`
-                list of nodes that should be retained in the computational tree.
-                Note that specifying bifurcations, leafs or the root is
-                superfluous, since they are part of the computational tree by
-                default.
-            eps: float (default ``1e-8``)
-                relative margin for parameter change
+        comp_nodes: list of `neat.MorphNode` or subclasses
+            list of nodes that should be retained in the computational tree.
+            Note that specifying bifurcations, leafs or the root is
+            superfluous, since they are part of the computational tree by
+            default.
+        eps: float
+            relative margin for parameter change
+        dx_min: float
+            the minimal distance between computational nodes (in um)
         """
         self.remove_comp_tree()
-        if compnodes is None:
-            compnodes = []
-        compnodes += [node for node in self if self._evaluate_comp_criteria(node, eps=eps)]
-        compnode_indices = [node.index for node in compnodes]
+        # create list of comp nodes
+        provided_comp_nodes = [] if comp_nodes is None else comp_nodes
+        comp_nodes = self._add_comp_nodes(
+            self.root,
+            dx_min=dx_min, eps=eps,
+            provided_comp_nodes=provided_comp_nodes,
+            comp_nodes=[],
+        )
+
+        comp_node_indices = [node.index for node in comp_nodes]
         nodes = copy.deepcopy(self.nodes)
 
         for node in nodes:
-            if node.index not in compnode_indices:
+            if node.index not in comp_node_indices:
                 self.remove_single_node(node)
             elif node.parent_node != None:
                 orig_node = self[node.index]
@@ -1094,6 +1133,7 @@ class MorphTree(STree):
         Removes the computational tree
         """
         self._computational_root = None
+        self.root = self._original_root
         for node in self:
             node.used_in_comp_tree = False
 
@@ -1173,9 +1213,9 @@ class MorphTree(STree):
                     if self.check_computational_tree_active():
                         # assure that a list of computational nodes is returned
                         node_ = self._find_comp_node_from_root(node)
-                        compnode = self[node_.index]
-                        if compnode not in nodes:
-                            nodes.append(compnode)
+                        comp_node = self[node_.index]
+                        if comp_node not in nodes:
+                            nodes.append(comp_node)
                     else:
                         # assure that a list of original nodes is returned
                         nodes.append(self[node.index])
