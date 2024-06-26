@@ -442,7 +442,7 @@ class PhysTree(MorphTree):
         return val
 
     @comptree_removal_decorator
-    def set_v_ep(self, v_ep_distr, node_arg=None):
+    def set_v_ep(self, v_ep, node_arg=None):
         """
         Set the voltage expansion points throughout the tree.
 
@@ -452,15 +452,15 @@ class PhysTree(MorphTree):
 
         Parameters
         ----------
-        v_ep_distr: float, dict or :func:`float -> float`
+        v_ep: float, dict or `Callable(float) -> float`
             The expansion point potentials [mV]
         """
         for node in self.convert_node_arg_to_nodes(node_arg):
-            e = self._distr_2_float(v_ep_distr, node, argname='`v_ep_distr`')
+            e = self._distr_2_float(v_ep, node, argname='`v_ep`')
             node.set_v_ep(e)
 
     @comptree_removal_decorator
-    def set_conc_ep(self, ion, conc_eq_distr, node_arg=None):
+    def set_conc_ep(self, ion, conc_eq, node_arg=None):
         """
         Set the concentration expansion points throughout the tree.
 
@@ -470,28 +470,28 @@ class PhysTree(MorphTree):
 
         Parameters
         ----------
-        conc_eq_distr: float, dict or :func:`float -> float`
+        conc_eq: float, dict or `Callable(float) -> float`
             The expansion point concentrations [mM]
         """
         for node in self.convert_node_arg_to_nodes(node_arg):
-            conc = self._distr_2_float(conc_eq_distr, node, argname='`conc_eq_distr`')
+            conc = self._distr_2_float(conc_eq, node, argname='`conc_eq`')
             node.set_conc_ep(ion, conc)
 
     @comptree_removal_decorator
-    def set_physiology(self, c_m_distr, r_a_distr, g_s_distr=None, node_arg=None):
+    def set_physiology(self, c_m, r_a, g_s=None, node_arg=None):
         """
         Set specifice membrane capacitance, axial resistance and (optionally)
         static point-like shunt conductances in the tree. Capacitance is stored
-        at each node as the attribute 'c_m' (uF/cm2) and axial resistance as the
-        attribute 'r_a' (MOhm*cm)
+        at each node as the attribute 'c_m' [uF/cm2] and axial resistance as the
+        attribute 'r_a' [MOhm*cm]
 
         Parameters
         ----------
-        c_m_distr: float, dict or :func:`float -> float`
+        c_m: float, dict or `Callable(float) -> float`
             specific membrance capacitance
-        r_a_distr: float, dict or :func:`float -> float`
+        r_a: float, dict or `Callable(float) -> float`
             axial resistance
-        g_s_distr: float, dict, :func:`float -> float` or None (optional, default
+        g_s: float, dict, `Callable(float) -> float` or None (optional, default
             is `None`)
             point like shunt conductances (placed at `(node.index, 1.)` for the
             nodes in ``node_arg``). By default no shunt conductances are added
@@ -500,14 +500,14 @@ class PhysTree(MorphTree):
             Defaults to None
         """
         for node in self.convert_node_arg_to_nodes(node_arg):
-            c_m = self._distr_2_float(c_m_distr, node, argname='`c_m_distr`')
-            r_a = self._distr_2_float(r_a_distr, node, argname='`r_a_distr`')
-            g_s = self._distr_2_float(g_s_distr, node, argname='`g_s_distr`') if \
-                  g_s_distr is not None else 0.
+            c_m = self._distr_2_float(c_m, node, argname='`c_m`')
+            r_a = self._distr_2_float(r_a, node, argname='`r_a`')
+            g_s = self._distr_2_float(g_s, node, argname='`g_s`') if \
+                  g_s is not None else 0.
             node.set_physiology(c_m, r_a, g_s)
 
     @comptree_removal_decorator
-    def set_leak_current(self, g_l_distr, e_l_distr, node_arg=None):
+    def set_leak_current(self, g_l, e_l, node_arg=None):
         """
         Set the parameters of the leak current. At each node, leak is stored
         under the attribute `node.currents['L']` at a tuple `(g_l, e_l)` with
@@ -515,14 +515,14 @@ class PhysTree(MorphTree):
 
         parameters:
         ----------
-        g_l_distr: float, dict or :func:`float -> float`
+        g_l: float, dict or `Callable(float) -> float`
             If float, the leak conductance is set to this value for all
             the nodes specified in `node_arg`. If it is a function, the input
             must specify the distance from the soma (micron) and the output
             the leak conductance [uS/cm^2] at that distance. If it is a
             dict, keys are the node indices and values the ion leak
             conductances [uS/cm^2].
-        e_l_distr: float, dict or :func:`float -> float`
+        e_l: float, dict or `Callable(float) -> float`
             If float, the reversal [mV] is set to this value for all
             the nodes specified in `node_arg`. If it is a function, the input
             must specify the distance from the soma [um] and the output
@@ -533,12 +533,12 @@ class PhysTree(MorphTree):
             Defaults to None
         """
         for node in self.convert_node_arg_to_nodes(node_arg):
-            g_l = self._distr_2_float(g_l_distr, node, argname='`g_l_distr`')
-            e_l = self._distr_2_float(e_l_distr, node, argname='`e_l_distr`')
+            g_l = self._distr_2_float(g_l, node, argname='`g_l`')
+            e_l = self._distr_2_float(e_l, node, argname='`e_l`')
             node._add_current('L', g_l, e_l)
 
     @comptree_removal_decorator
-    def add_channel_current(self, channel, g_max_distr, e_rev_distr, node_arg=None):
+    def add_channel_current(self, channel, g_max, e_rev, node_arg=None):
         """
         Adds a channel to the morphology. At each node, the channel is stored
         under the attribute `node.currents[channel.__class__.__name__]` as a
@@ -549,14 +549,14 @@ class PhysTree(MorphTree):
         ----------
         channel_name: :class:`IonChannel`
             The ion channel
-        g_max_distr: float, dict or :func:`float -> float`
+        g_max: float, dict or `Callable(float) -> float`
             If float, the maximal conductance is set to this value for all
             the nodes specified in `node_arg`. If it is a function, the input
             must specify the distance from the soma (micron) and the output
             the ion channel density (uS/cm^2) at that distance. If it is a
             dict, keys are the node indices and values the ion channel
             densities (uS/cm^2).
-        e_rev_distr: float, dict or :func:`float -> float`
+        e_rev: float, dict or `Callable(float) -> float`
             If float, the reversal (mV) is set to this value for all
             the nodes specified in `node_arg`. If it is a function, the input
             must specify the distance from the soma (micron) and the output
@@ -576,8 +576,8 @@ class PhysTree(MorphTree):
 
         # add the ion channel to the nodes
         for node in self.convert_node_arg_to_nodes(node_arg):
-            g_max = self._distr_2_float(g_max_distr, node, argname='`g_max_distr`')
-            e_rev = self._distr_2_float(e_rev_distr, node, argname='`e_rev_distr`')
+            g_max = self._distr_2_float(g_max, node, argname='`g_max`')
+            e_rev = self._distr_2_float(e_rev, node, argname='`e_rev`')
             node._add_current(channel_name, g_max, e_rev)
 
     def get_channels_in_tree(self):
@@ -620,7 +620,7 @@ class PhysTree(MorphTree):
             node.add_conc_mech(ion, gamma=gamma_, tau=tau_, inf=inf_)
 
     @comptree_removal_decorator
-    def fit_leak_current(self, e_eq_target_distr, tau_m_target_distr, node_arg=None):
+    def fit_leak_current(self, e_eq_target, tau_m_target, node_arg=None):
         """
         Fits the leak current to fix equilibrium potential and membrane time-
         scale.
@@ -629,13 +629,13 @@ class PhysTree(MorphTree):
 
         Parameters
         ----------
-        e_eq_target_distr: float, dict or :func:`float -> float`
+        e_eq_target: float, dict or `Callable(float) -> float`
             The target reversal potential (mV). If float, the target reversal is
             set to this value for all the nodes specified in `node_arg`. If it
             is a function, the input must specify the distance from the soma (um)
             and the output the target reversal at that distance. If it is a
             dict, keys are the node indices and values the target reversals
-        tau_m_target_distr: float, dict or :func:`float -> float`
+        tau_m_target: float, dict or `Callable(float) -> float`
             The target membrane time-scale (ms). If float, the target time-scale is
             set to this value for all the nodes specified in `node_arg`. If it
             is a function, the input must specify the distance from the soma (um)
@@ -646,8 +646,8 @@ class PhysTree(MorphTree):
             Defaults to None
         """
         for node in self.convert_node_arg_to_nodes(node_arg):
-            e_eq_target = self._distr_2_float(e_eq_target_distr, node, argname='`g_max_distr`')
-            tau_m_target = self._distr_2_float(tau_m_target_distr, node, argname='`e_rev_distr`')
+            e_eq_target = self._distr_2_float(e_eq_target, node, argname='`g_max`')
+            tau_m_target = self._distr_2_float(tau_m_target, node, argname='`e_rev`')
             assert tau_m_target > 0.
             node.fit_leak_current(e_eq_target=e_eq_target, tau_m_target=tau_m_target,
                                 channel_storage=self.channel_storage)
