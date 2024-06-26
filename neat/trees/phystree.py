@@ -13,6 +13,7 @@ import copy
 import warnings
 
 from . import morphtree
+from .stree import STree
 from .morphtree import MorphNode, MorphTree, MorphLoc
 from .morphtree import computational_tree_decorator
 from ..channels import concmechs, ionchannels
@@ -378,7 +379,7 @@ class PhysTree(MorphTree):
         return {"channel_storage": ckeys}
 
     def __repr__(self):
-        repr_str = super().__repr__()
+        repr_str = STree.__repr__(self)
         return repr_str + repr(self._get_repr_dict())
 
     def _reset_channel_storage(self):

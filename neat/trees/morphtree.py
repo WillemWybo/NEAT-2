@@ -1004,7 +1004,7 @@ class MorphTree(STree):
 
             add_node_to_comp_tree = all((
                 self._evaluate_comp_criteria(node, eps=eps),
-                dx > dx_min
+                dx >= dx_min
             ))
 
         if add_node_to_comp_tree:

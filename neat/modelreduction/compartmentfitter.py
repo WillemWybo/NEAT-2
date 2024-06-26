@@ -154,14 +154,7 @@ class CompartmentFitter(EquilibriumTree):
 
         super().__init__(*args, **kwargs)
 
-        if self.fit_cfg is None:
-            self.fit_cfg = FitParams()
-        elif fit_cfg is not None:
-            self.fit_cfg = fit_cfg
-        if self.concmech_cfg is None:
-            self.concmech_cfg = MechParams()
-        elif concmech_cfg is not None:
-            self.concmech_cfg = concmech_cfg
+        self.set_cfg(fit_cfg=fit_cfg, concmech_cfg=concmech_cfg)
 
         if call_post_init_in_contructor:
             self.post_init()
@@ -182,6 +175,17 @@ class CompartmentFitter(EquilibriumTree):
         with self.as_original_tree:
             # set the equilibrium potentials in the tree
             self.set_e_eq(pprint=True)
+
+    def get_attributes_excluded_from_cache_override(self):
+        """
+        Returns a list of attributes that should NOT be overwritten by the cashed tree
+
+        Returns
+        -------
+        list of str
+            Attribute names that should not be overwritten
+        """
+        return super().get_attributes_excluded_from_cache_override() + ["fit_cfg", "concmech_cfg"]
 
     def convert_fit_arg(self, fit_arg):
         """

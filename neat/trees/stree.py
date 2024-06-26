@@ -230,10 +230,10 @@ class STree(object):
         -------
             int
         """
-        self._node_count = 0
+        node_count = 0
         for node in self.__iter__(node=node):
-            self._node_count += 1
-        return self._node_count
+            node_count += 1
+        return node_count
 
     def __iter__(self, node=None, **kwargs):
         """
@@ -274,7 +274,6 @@ class STree(object):
         for iternode in self.__iter__(node):
             tree_string += '\n    ' + iternode.__str__(with_parent=True)
         return tree_string
-
 
     def __repr__(self, node=None):
         """
