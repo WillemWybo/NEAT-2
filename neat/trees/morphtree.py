@@ -86,20 +86,29 @@ class MorphLoc(object):
 
     Parameters
     ----------
-        loc: tuple or dict or `neat.MorphLoc`
-            if tuple: (node index, x-value)
-            if dict: {'node': node index, 'x': x-value}
-        reftree: `neat.MorphTree`
-        set_as_comploc: bool
-            if True, assumes the paremeters provided in `loc` are coordinates
-            on the computational tree. Doing this while no computational tree
-            has been initialized in `reftree` will result in an error.
-            Defaults to False
+    loc: `tuple` or `dict` or `neat.MorphLoc`
+        if tuple: (node index, x-value)
+        if dict: {'node': node index, 'x': x-value}
+    reftree: `neat.MorphTree`
+    set_as_comploc: `bool`
+        if True, assumes the paremeters provided in `loc` are coordinates
+        on the computational tree. Doing this while no computational tree
+        has been initialized in `reftree` will result in an error.
+        Defaults to False
 
     Raises
     ------
-        ValueError
-            If x-coordinate of location is not in ``[0,1]``
+    ValueError
+        If x-coordinate of location is not in ``[0,1]``
+
+    Attributes
+    ----------
+    loc: dict {'node': int, 'x': `float` $\in [0,1]$}
+        The location, in original tree coordinates
+    comp_loc: dict {'node': int, 'x': `float` $\in [0,1]$}
+        The location, in computational tree coordinates w.r.t. `self.reftree`
+    reftree: `neat.MorphTree` or subclass
+        The tree on which the location is defined
     """
 
     def __init__(self, loc, reftree, set_as_comploc=False):
@@ -1936,13 +1945,13 @@ class MorphTree(STree):
                     self.leafinds[name].append(ind)
         return self.leafinds[name]
 
-    def _has_loc_from_root(self, loc, name):
+    def _has_loc_from_root(self, loc, name, tol=1e-8):
         look_further = False
         # look if there are locs on the same node
         if loc['node'] != 1:
             n_inds = np.where(loc['node'] == self.nids[name] )[0]
             if len(n_inds) > 0:
-                x_inds = np.where(loc['x'] < self.xs[name][n_inds])[0]
+                x_inds = np.where(loc['x'] + tol < self.xs[name][n_inds])[0]
                 if len(x_inds) > 0:
                     returnbool = True
                 else:
@@ -1957,8 +1966,7 @@ class MorphTree(STree):
             cnodes = node.child_nodes
             returnbool = False
             for cnode in cnodes:
-                if self._has_loc_from_root({'node': cnode.index, 'x': 0.}, name):
-                    returnbool = True
+                returnbool = self._has_loc_from_root({'node': cnode.index, 'x': 0.}, name)
         return returnbool
 
     def distances_to_soma(self, loc_arg, recompute=False):
