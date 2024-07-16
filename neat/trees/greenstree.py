@@ -906,7 +906,7 @@ class GreensTreeTime(GreensTree):
         Returns
         -------
         nd.ndarray (dtype = complex, ndim = 1)
-            The transfer impedance ``[MOhm]`` as a function of frequency
+            The transfer impedance kernel ``[MOhm/ms]`` as a function of frequency
         """
         self._check_instantiated()
 
