@@ -26,7 +26,8 @@ import pytest
 import pickle
 
 from neat import MorphTree, PhysTree, GreensTree, SOVTree, NeuronCompartmentTree
-from neat import CompartmentFitter, CachedGreensTree
+from neat import CompartmentFitter, CachedGreensTree, GreensTreeTime
+from neat import CompartmentTree
 import neat.modelreduction.compartmentfitter as compartmentfitter
 
 import channelcollection_for_tests as channelcollection
@@ -812,6 +813,328 @@ class TestCompartmentFitter:
         assert v_eq_sim == pytest.approx(v_eq_target)
 
 
+class TestAdmittanceCorrection:
+    """
+    Tests for the admittance-kernel correction feature of `CompartmentFitter`
+    (see `CompartmentFitter.compute_admittance_correction`).
+    """
+
+    # --- fixture loaders (mirrored from TestCompartmentFitter) -----------
+
+    def load_T_tree(self):
+        fname = os.path.join(MORPHOLOGIES_PATH_PREFIX, "Tsovtree.swc")
+        self.tree = PhysTree(fname, types=[1, 3, 4])
+        self.tree.set_physiology(0.8, 100.0 / 1e6)
+        self.tree.fit_leak_current(-75.0, 10.0)
+        self.tree.set_comp_tree()
+
+    def load_ball_and_stick(self):
+        self.tree = PhysTree(
+            os.path.join(MORPHOLOGIES_PATH_PREFIX, "ball_and_stick.swc")
+        )
+        self.tree.set_physiology(0.8, 100.0 / 1e6)
+        self.tree.set_leak_current(100.0, -75.0)
+        self.tree.set_comp_tree()
+
+    def load_ball(self):
+        self.tree = PhysTree(os.path.join(MORPHOLOGIES_PATH_PREFIX, "ball.swc"))
+        self.tree.set_physiology(0.8, 100.0 / 1e6)
+        k_chan = channelcollection.Kv3_1()
+        self.tree.add_channel_current(k_chan, 0.766 * 1e6, -85.0)
+        na_chan = channelcollection.Na_Ta()
+        self.tree.add_channel_current(na_chan, 1.71 * 1e6, 50.0)
+        self.tree.fit_leak_current(-75.0, 10.0)
+        self.tree.set_v_ep(-75.0)
+        self.tree.set_comp_tree()
+
+    # --- specific tests --------------------------------------------------
+
+    def test_schur_complement(self):
+        """
+        Verify the identity that underlies our driving-point admittance
+        computation: `1 / Z_loc[p, p]` equals the Schur complement of the
+        admittance matrix `Y_loc = inv(Z_loc)` at the host port `p`.
+        """
+        self.load_T_tree()
+        fit_locs = [(1, 0.5), (4, 0.5), (5, 0.5), (8, 0.5)]
+        omegas = 2.0 * np.pi * np.logspace(1.0, 6.0, 50)
+        s_arr = 1j * omegas
+
+        greens_tree = GreensTree(self.tree)
+        greens_tree.set_comp_tree()
+        greens_tree.set_impedance(s_arr)
+        z_loc = greens_tree.calc_impedance_matrix(fit_locs)
+
+        n_locs = z_loc.shape[1]
+        for p in range(n_locs):
+            r_idx = [k for k in range(n_locs) if k != p]
+            y_diag = 1.0 / z_loc[:, p, p]
+
+            y_loc = np.linalg.inv(z_loc)
+            y_pp = y_loc[:, p, p]
+            y_pr = y_loc[:, p, :][:, r_idx]
+            y_rp = y_loc[:, :, p][:, r_idx]
+            y_rr = y_loc[:, :, :][:, r_idx, :][:, :, r_idx]
+            y_rr_inv = np.linalg.inv(y_rr)
+            schur = y_pp - np.einsum(
+                "fi,fij,fj->f", y_pr, y_rr_inv, y_rp
+            )
+            assert np.allclose(y_diag, schur, rtol=1e-8, atol=1e-12)
+
+    def test_rational_realization(self):
+        """
+        Build a `CompartmentTree` by hand, attach one or more zero-leak
+        passive dummy compartments, and verify that the resulting
+        driving-point admittance matches the closed-form
+        ``sum_q g_c · s / (s + b_q)``.
+        """
+        # build a single-soma ctree
+        ctree = CompartmentTree()
+        root = ctree.create_corresponding_node(0, ca=0.1, g_c=0.0, g_l=0.01)
+        root.loc_idx = 0
+        root.e_eq = -75.0
+        root.currents["L"] = (0.01, -75.0)
+        ctree.root = root
+
+        # chosen dummy parameters (in NEAT units: uS, uF)
+        params = [
+            (0.05, 100.0),  # (g_c, b)  -> c = g_c / b
+            (0.02, 500.0),
+            (0.1, 2000.0),
+        ]
+        for ii, (gc_q, b_q) in enumerate(params, start=1):
+            dummy = ctree.create_corresponding_node(
+                ii, ca=gc_q / b_q, g_c=gc_q, g_l=0.0,
+            )
+            dummy.loc_idx = None
+            dummy.e_eq = -75.0
+            dummy.currents["L"] = (0.0, -75.0)
+            ctree.add_node_with_parent(dummy, root)
+
+        omegas = 2.0 * np.pi * np.logspace(1.0, 6.0, 80)
+        s_arr = 1j * omegas
+        z_red = ctree.calc_impedance_matrix(
+            freqs=s_arr, channel_names=["L"], indexing="locs"
+        )
+        y_red = 1.0 / z_red[:, 0, 0]
+
+        # bare soma admittance (without dummies): g_L + s * c_soma
+        y_bare = 0.01 + s_arr * 0.1
+        # additive dummy contribution
+        y_dum = np.zeros_like(s_arr)
+        for gc_q, b_q in params:
+            y_dum = y_dum + gc_q * s_arr / (s_arr + b_q)
+
+        assert np.allclose(y_red, y_bare + y_dum, rtol=1e-8, atol=1e-12)
+
+    def test_passivity(self):
+        """
+        The hybrid admittance contributed by zero-leak passive dummies
+        is `sum_q g_c · s / (s + b)`. On the imaginary axis it satisfies
+        `Re Y_dum(iω) = sum_q g_c · ω^2 / (ω^2 + b^2) >= 0`.
+        """
+        omegas = 2.0 * np.pi * np.logspace(-1.0, 7.0, 200)
+        s_arr = 1j * omegas
+        params = [(0.05, 100.0), (0.02, 500.0), (0.1, 2000.0)]
+        y_dum = np.zeros_like(s_arr)
+        for gc_q, b_q in params:
+            y_dum = y_dum + gc_q * s_arr / (s_arr + b_q)
+        assert np.all(np.real(y_dum) >= -1e-12)
+
+    def test_point_neuron_no_correction(self):
+        """
+        For a point neuron the reduction is exact: `Delta Y(s) == 0`,
+        so `compute_admittance_correction` should attach no dummy
+        compartments.
+        """
+        self.load_ball()
+        cm = CompartmentFitter(self.tree, save_cache=False, recompute_cache=True)
+        ctree, locs = cm.fit_model(
+            [(1, 0.5)], kernel_correction=[0], pprint=False,
+        )
+        # no dummies attached
+        assert len(ctree) == 1
+        # no None entries appended to locs
+        assert all(loc is not None for loc in locs)
+
+    def test_equilibrium(self):
+        """
+        With no input current, a corrected reduced model with zero-leak
+        dummies should remain at equilibrium: the dummy compartments add
+        no DC load, and their leak reversal equals the host's.
+        """
+        self.load_ball_and_stick()
+        cm = CompartmentFitter(
+            self.tree, save_cache=False, recompute_cache=True,
+        )
+        fit_locs = [(1, 0.5), (4, 0.5)]
+        ctree, locs = cm.fit_model(
+            fit_locs, kernel_correction=[0], pprint=False,
+        )
+        # every dummy compartment has g_l = 0 and e_eq matching its host
+        n_dummies = 0
+        for node in ctree:
+            if node.loc_idx is None:
+                n_dummies += 1
+                # zero leak conductance
+                assert node.currents["L"][0] == pytest.approx(0.0)
+                # leak reversal equals e_eq (which equals host e_eq)
+                parent = node.parent_node
+                assert node.e_eq == pytest.approx(parent.e_eq)
+                # dummy zero-DC admittance: Y_dum(0) == 0 in isolation
+                # check via the steady-state system matrix on a tree
+                # containing just this dummy + host
+        # short-circuit: if no dummies were attached, the test has nothing
+        # to verify beyond the assertion that no extra nodes were added
+        if n_dummies == 0:
+            return
+
+        # DC admittance of the full reduced+dummy tree at the host loc
+        # must equal that of the leak-only reduced tree (no dummies):
+        # Y_dum(0) == 0 by construction.
+        # Build a copy of ctree without dummies for comparison via the
+        # tree-indexed system matrix at freq=0.
+        z_hyb = ctree.calc_impedance_matrix(
+            freqs=0.0, channel_names=["L"], indexing="locs"
+        )
+        # compare against the same model rebuilt without kernel correction
+        cm2 = CompartmentFitter(
+            self.tree, save_cache=False, recompute_cache=True,
+        )
+        ctree_ref, _ = cm2.fit_model(fit_locs, pprint=False)
+        z_red = ctree_ref.calc_impedance_matrix(
+            freqs=0.0, channel_names=["L"], indexing="locs"
+        )
+        # entries at fit-location indices should match at DC
+        assert np.allclose(z_hyb, z_red, rtol=5e-3, atol=1e-6)
+
+    def test_accept_passive_terms(self):
+        """
+        Unit test for `CompartmentFitter._accept_passive_terms`: it must
+        reject complex pole pairs, non-stable poles, and residues with
+        the wrong sign.
+        """
+        accept = compartmentfitter.CompartmentFitter._accept_passive_terms
+
+        # all-physical input
+        alpha = np.array([100.0 + 0j, 500.0 + 0j])
+        gamma = np.array([-5.0 + 0j, -10.0 + 0j])
+        a_acc, g_acc = accept(alpha, gamma)
+        assert len(a_acc) == 2
+
+        # negative pole rejected
+        alpha = np.array([100.0 + 0j, -50.0 + 0j])
+        gamma = np.array([-5.0 + 0j, -10.0 + 0j])
+        a_acc, g_acc = accept(alpha, gamma)
+        assert len(a_acc) == 1
+        assert a_acc[0].real == pytest.approx(100.0)
+
+        # positive residue rejected (would give g_c < 0)
+        alpha = np.array([100.0 + 0j, 200.0 + 0j])
+        gamma = np.array([-5.0 + 0j, +10.0 + 0j])
+        a_acc, g_acc = accept(alpha, gamma)
+        assert len(a_acc) == 1
+
+        # complex pole pair rejected (cannot map to a single passive
+        # zero-leak dummy)
+        alpha = np.array([100.0 + 50j, 100.0 - 50j])
+        gamma = np.array([-5.0 + 0j, -5.0 + 0j])
+        a_acc, g_acc = accept(alpha, gamma)
+        assert len(a_acc) == 0
+
+        # empty input
+        a_acc, g_acc = accept(np.array([]), np.array([]))
+        assert len(a_acc) == 0
+
+    def test_discrete_update_T_tree(self):
+        """
+        With kernel correction, the somatic driving-point admittance of
+        the reduced model should be closer to the full model than without
+        correction, on the configured frequency band.
+        """
+        self.load_T_tree()
+        fit_locs = [(1, 0.5), (4, 1.0), (5, 0.5), (8, 0.5)]
+
+        cm = CompartmentFitter(
+            self.tree, save_cache=False, recompute_cache=True,
+        )
+        ctree_red, _ = cm.fit_model(fit_locs, pprint=False)
+
+        cm2 = CompartmentFitter(
+            self.tree, save_cache=False, recompute_cache=True,
+        )
+        ctree_hyb, locs_hyb = cm2.fit_model(
+            fit_locs, kernel_correction=[0], pprint=False,
+        )
+
+        # admittance comparison on the same grid the correction uses
+        omegas = 2.0 * np.pi * np.logspace(1.0, 6.0, 200)
+        s_arr = 1j * omegas
+
+        gtree = cm._get_passified_greenstree(suffix="_test_passified_")
+        gtree.set_impedances_in_tree(freqs=s_arr, pprint=False)
+        z_full = gtree.calc_impedance_matrix(fit_locs)
+        y_full_0 = 1.0 / z_full[:, 0, 0]
+
+        z_red = ctree_red.calc_impedance_matrix(
+            freqs=s_arr, channel_names=["L"], indexing="locs",
+        )
+        y_red_0 = 1.0 / z_red[:, 0, 0]
+
+        z_hyb = ctree_hyb.calc_impedance_matrix(
+            freqs=s_arr, channel_names=["L"], indexing="locs",
+        )
+        # extract the host's diagonal in the location-indexed matrix
+        y_hyb_0 = 1.0 / z_hyb[:, 0, 0]
+
+        err_red = np.linalg.norm(y_full_0 - y_red_0)
+        err_hyb = np.linalg.norm(y_full_0 - y_hyb_0)
+        # correction must not degrade accuracy and should generally improve it
+        assert err_hyb <= err_red + 1e-9
+
+    def test_discrete_update_ball_and_stick(self):
+        """
+        Same as `test_discrete_update_T_tree`, but on the ball-and-stick
+        model.
+        """
+        self.load_ball_and_stick()
+        fit_locs = [(1, 0.5), (4, 0.5)]
+
+        cm = CompartmentFitter(
+            self.tree, save_cache=False, recompute_cache=True,
+        )
+        ctree_red, _ = cm.fit_model(fit_locs, pprint=False)
+
+        cm2 = CompartmentFitter(
+            self.tree, save_cache=False, recompute_cache=True,
+        )
+        ctree_hyb, locs_hyb = cm2.fit_model(
+            fit_locs, kernel_correction=[0], pprint=False,
+        )
+
+        omegas = 2.0 * np.pi * np.logspace(1.0, 6.0, 200)
+        s_arr = 1j * omegas
+
+        gtree = cm._get_passified_greenstree(suffix="_test_passified_")
+        gtree.set_impedances_in_tree(freqs=s_arr, pprint=False)
+        z_full = gtree.calc_impedance_matrix(fit_locs)
+        y_full_0 = 1.0 / z_full[:, 0, 0]
+
+        z_red = ctree_red.calc_impedance_matrix(
+            freqs=s_arr, channel_names=["L"], indexing="locs",
+        )
+        y_red_0 = 1.0 / z_red[:, 0, 0]
+
+        z_hyb = ctree_hyb.calc_impedance_matrix(
+            freqs=s_arr, channel_names=["L"], indexing="locs",
+        )
+        y_hyb_0 = 1.0 / z_hyb[:, 0, 0]
+
+        err_red = np.linalg.norm(y_full_0 - y_red_0)
+        err_hyb = np.linalg.norm(y_full_0 - y_hyb_0)
+        assert err_hyb <= err_red + 1e-9
+
+
 def test_expansion_points():
     kv3_1 = channelcollection.Kv3_1()
     na_ta = channelcollection.Na_Ta()
@@ -850,5 +1173,15 @@ if __name__ == "__main__":
     tcf.test_cacheing()
     tcf.test_fit_storage()
     tcf.test_e_eq_fit()
+
+    tac = TestAdmittanceCorrection()
+    tac.test_schur_complement()
+    tac.test_rational_realization()
+    tac.test_passivity()
+    tac.test_accept_passive_terms()
+    tac.test_point_neuron_no_correction()
+    tac.test_equilibrium()
+    tac.test_discrete_update_T_tree()
+    tac.test_discrete_update_ball_and_stick()
 
     test_expansion_points()
