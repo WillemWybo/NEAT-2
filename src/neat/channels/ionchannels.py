@@ -582,23 +582,26 @@ class IonChannel(object):
         if not hasattr(self.conc_ext, "values"):
             self.conc_ext = {str(ion): self.cfg.conc_ext[str(ion)] for ion in self.conc_ext}
 
+        if not hasattr(self, "driving_force"):
+            self.driving_force = self.sp_v - sp.Symbol("e")
+        self.driving_force = sp.sympify(self.driving_force)
+
         # default parameters
         self.default_params = SPDict({})
         self.default_params[str(self.sp_t)] = (
             self.temp if "temp" in self.__dict__ else self.cfg.temp
         )
-        try:
-            self.default_params["e"] = (
-                self.e if "e" in self.__dict__ else self.cfg.e_rev[self.ion]
-            )
-        except KeyError:
-            warnings.warn("No default reversal potential defined.")
+        if self._uses_e_rev:
+            try:
+                self.default_params["e"] = (
+                    self.e if "e" in self.__dict__ else self.cfg.e_rev[self.ion]
+                )
+            except KeyError:
+                warnings.warn(
+                    f"{self.__class__.__name__}: no default reversal potential defined."
+                )
         for ion_str, val in self.conc_ext.items():
             self.default_params[ion_str + "_ext"] = val
-
-        if not hasattr(self, "driving_force"):
-            self.driving_force = self.sp_v - sp.Symbol("e")
-        self.driving_force = sp.sympify(self.driving_force)
 
         # self._lambdify_channel()
         self.set_default_params(**kwargs)
@@ -652,6 +655,11 @@ class IonChannel(object):
     @property
     def ordered_statevars(self):
         return list(sorted(self.statevars, key=str))
+
+    @property
+    def _uses_e_rev(self) -> bool:
+        """True iff the channel's driving force contains the symbol ``e``."""
+        return sp.Symbol("e") in self.driving_force.free_symbols
 
     def _lambdify_channel(self):
         """
@@ -715,13 +723,25 @@ class IonChannel(object):
             }
         )
 
-        # driving force D and its derivatives (temp, e, and <ion>_ext already substituted)
-        df_expr = self._substitute_defaults(self.driving_force)
-        self.f_driving_force = _broadcast(sp.lambdify(args, df_expr))
-        self.dD_dv = _broadcast(sp.lambdify(args, sp.diff(df_expr, self.sp_v, 1)))
+        # driving force D and its derivatives
+        # Substitute every default EXCEPT 'e', which stays as a runtime arg
+        # so that each call site can supply the node-specific reversal directly.
+        df_expr = self.driving_force
+        for param, val in self.default_params.items():
+            if param != "e":
+                df_expr = df_expr.subs(sp.symbols(param), val)
+
+        # For channels that use 'e', append it as the last positional argument.
+        # For non-ohmic channels (e not in driving_force) the arg list is unchanged.
+        df_lambda_args = args + ([sp.Symbol("e")] if self._uses_e_rev else [])
+
+        self.f_driving_force = _broadcast(sp.lambdify(df_lambda_args, df_expr))
+        self.dD_dv = _broadcast(
+            sp.lambdify(df_lambda_args, sp.diff(df_expr, self.sp_v, 1))
+        )
         self.dD_dci = CallDict(
             {
-                c: _broadcast(sp.lambdify(args, sp.diff(df_expr, c, 1)))
+                c: _broadcast(sp.lambdify(df_lambda_args, sp.diff(df_expr, c, 1)))
                 for c in self.sp_c
             }
         )
@@ -753,6 +773,22 @@ class IonChannel(object):
                 arg_list.append(self.conc[c])
 
         return arg_list
+
+    def _df_call_args(self, v, e=None, **kwargs):
+        """
+        Build the positional argument list for ``f_driving_force``, ``dD_dv``,
+        and ``dD_dci``.
+
+        Identical to ``_args_as_list`` for non-ohmic channels. For ohmic
+        channels (``_uses_e_rev`` is True) the reversal ``e`` is appended as the
+        last element. If ``e`` is ``None`` the channel's default is used.
+        """
+        base = self._args_as_list(v, **kwargs)
+        if self._uses_e_rev:
+            if e is None:
+                e = self.default_params.get("e")
+            return base + [e]
+        return base
 
     def compute_p_open(self, v, **kwargs):
         """
@@ -963,11 +999,17 @@ class IonChannel(object):
         return lin_f
 
     def _get_reversal(self, e):
+        """Return the reversal potential, or ``None`` if the channel does not use one."""
+        if not self._uses_e_rev:
+            return None
         if e is None:
             try:
                 e = self.default_params["e"]
             except KeyError:
-                raise KeyError("No default reversal defined, provide value for `e`.")
+                raise KeyError(
+                    f"{self.__class__.__name__}: no default reversal defined; "
+                    "provide value for `e`."
+                )
         return e
 
     def compute_lin_sum(self, v, freqs, e=None, **kwargs):
@@ -982,9 +1024,8 @@ class IonChannel(object):
         freqs: float, complex, or `np.ndarray` of float or complex:
             The frequencies ``[Hz]`` at which to evaluate the linearized contribution
         e: float or `None`
-            Accepted for backward compatibility; ignored. The reversal potential
-            (or full GHK driving force) is embedded in `self.driving_force` and
-            substituted before lambdifying.
+            Optional reversal potential override for channels whose driving
+            force uses ``e``.
         **kwargs: float or `np.ndarray`
             Optional values for the state variables and concentrations.
 
@@ -994,10 +1035,13 @@ class IonChannel(object):
             The linearized current. Shape is dimension of `freqs` followed by
             the dimensions of `v`.
         """
-        args = self._args_as_list(v, **kwargs)
-        D = self.f_driving_force(*args)
-        dD_dv = self.dD_dv(*args)
-        return -D * self.compute_linear(v, freqs, **kwargs) - self.compute_p_open(v, **kwargs) * dD_dv
+        df_args = self._df_call_args(v, e=e, **kwargs)
+        D = self.f_driving_force(*df_args)
+        dD_dv = self.dD_dv(*df_args)
+        return (
+            -D * self.compute_linear(v, freqs, **kwargs)
+            - self.compute_p_open(v, **kwargs) * dD_dv
+        )
 
     def compute_lin_conc(self, v, freqs, ion, e=None, **kwargs):
         """
@@ -1012,7 +1056,8 @@ class IonChannel(object):
         ion: str
             The ion name for which to compute the linearized contribution
         e: float or `None`
-            Accepted for backward compatibility; ignored. See `compute_lin_sum`.
+            Optional reversal potential override for channels whose driving
+            force uses ``e``. See `compute_lin_sum`.
         **kwargs: float or `np.ndarray`
             Optional values for the state variables and concentrations.
 
@@ -1022,9 +1067,9 @@ class IonChannel(object):
             The linearized current. Shape is dimension of `freqs` followed by
             the dimensions of `v`.
         """
-        args = self._args_as_list(v, **kwargs)
-        D = self.f_driving_force(*args)
-        dD_dci_ion = self.dD_dci(*args).get(ion, 0.0)
+        df_args = self._df_call_args(v, e=e, **kwargs)
+        D = self.f_driving_force(*df_args)
+        dD_dci_ion = self.dD_dci(*df_args).get(ion, 0.0)
         p = self.compute_p_open(v, **kwargs)
         return -D * self.compute_linear_conc(v, freqs, ion, **kwargs) - p * dD_dci_ion
 
@@ -1071,7 +1116,10 @@ class IonChannel(object):
                 if c in self.conc_ext:
                     reads.append(c + "o")
                 file.write("    USEION %s READ %s\n" % (c, ", ".join(reads)))
-        file.write("    RANGE  g, e" + "\n")
+        if self._uses_e_rev:
+            file.write("    RANGE  g, e" + "\n")
+        else:
+            file.write("    RANGE  g" + "\n")
 
         taustring = "tau_" + ", tau_".join(sv)
         varstring = "_inf, ".join(sv) + "_inf"
@@ -1081,7 +1129,8 @@ class IonChannel(object):
 
         file.write("PARAMETER {\n")
         file.write("    g = " + str(g * 1e-6) + " (S/cm2)" + "\n")
-        file.write("    e = " + str(e) + " (mV)" + "\n")
+        if self._uses_e_rev:
+            file.write("    e = " + str(e) + " (mV)" + "\n")
         file.write("    celsius (degC)\n")
         file.write("}\n\n")
 
@@ -1118,8 +1167,7 @@ class IonChannel(object):
 
         # driving force: ohmic uses inline (v-e); non-ohmic gets its own FUNCTION block
         # (LOCAL declarations are only valid inside FUNCTION/PROCEDURE, not BREAKPOINT)
-        ohmic_df = self.sp_v - sp.Symbol("e")
-        if self.driving_force == ohmic_df:
+        if self._uses_e_rev:
             calcstring = "i%s = g * (%s) * (v - e)" % (self.ion, calc_p_open)
         else:
             # substitute temp → celsius so the FUNCTION uses the NEURON builtin directly
@@ -1237,8 +1285,7 @@ class IonChannel(object):
         e = self._get_reversal(e)
         sv_init = self.compute_varinf(v_comp)
 
-        ohmic_df = self.sp_v - sp.Symbol("e")
-        is_ohmic = (self.driving_force == ohmic_df)
+        is_ohmic = self._uses_e_rev
 
         blocks_dict = {block: "" for block in blocks}
 
@@ -1264,8 +1311,9 @@ class IonChannel(object):
                 "\n"
                 + "        # parameters %s\n" % cname
                 + "        gbar_%s real = %.2f\n" % (cname, g)
-                + "        e_%s real = %.2f\n" % (cname, e)
             )
+            if self._uses_e_rev:
+                param_str += "        e_%s real = %.2f\n" % (cname, e)
 
             blocks_dict["parameters"] += param_str
 
@@ -1395,6 +1443,20 @@ class IonChannel(object):
                 expr_str = expr_str.replace(str(ion), prefix + str(ion) + suffix)
             return expr_str
 
+        # Non-ohmic C++ backend paths need the full driving-force expression
+        # instead of the legacy hardcoded (m_e_rev - v) form.
+        if self._uses_e_rev:
+            df_ccode = "(m_e_rev - v)"
+            ddf_ccode = "-1."
+        else:
+            df_expr = _drop_piecewise_guards(self._substitute_defaults(self.driving_force))
+            df_ccode = sp.printing.ccode(df_expr).replace(str(self.sp_v), "v")
+            df_ccode = _replaceConc(df_ccode, prefix="m_")
+
+            ddf_expr = sp.diff(df_expr, self.sp_v, 1)
+            ddf_ccode = sp.printing.ccode(ddf_expr).replace(str(self.sp_v), "v")
+            ddf_ccode = _replaceConc(ddf_ccode, prefix="m_")
+
         # open header and cc files
         fcc = open(os.path.join(path, "Ionchannels.cc"), "a")
         fh = open(os.path.join(path, "Ionchannels.h"), "a")
@@ -1481,11 +1543,11 @@ class IonChannel(object):
 
         # function for temporal integration
         fcc.write("double %s::f(double v){\n" % c_name)
-        fcc.write("    return (m_e_rev - v);\n")
+        fcc.write("    return %s;\n" % df_ccode)
         fcc.write("}\n")
 
         fcc.write("double %s::DfDv(double v){\n" % c_name)
-        fcc.write("    return -1.;\n")
+        fcc.write("    return %s;\n" % ddf_ccode)
         fcc.write("}\n")
 
         # set voltage values to evaluate at constant voltage during newton iteration
@@ -1520,10 +1582,7 @@ class IonChannel(object):
             fcc.write("    }" + "\n")
             fcc.write("    double %s = %s;\n" % (str(svar), vi_ccode))
 
-        fcc.write(
-            "    return (m_e_rev - v) * (%s - m_p_open_eq);\n"
-            % sp.printing.ccode(self.p_open)
-        )
+        fcc.write("    return %s * (%s - m_p_open_eq);\n" % (df_ccode, sp.printing.ccode(self.p_open)))
         fcc.write("}\n")
 
         fcc.write("double %s::DfDvNewton(double v){\n" % c_name)
@@ -1566,8 +1625,8 @@ class IonChannel(object):
         )
 
         fcc.write(
-            "    return -1. * (%s - m_p_open_eq) + (%s) * (m_e_rev - v);\n"
-            % (sp.printing.ccode(self.p_open), expr_str)
+            "    return %s * (%s - m_p_open_eq) + (%s) * %s;\n"
+            % (ddf_ccode, sp.printing.ccode(self.p_open), expr_str, df_ccode)
         )
         fcc.write("}\n")
 

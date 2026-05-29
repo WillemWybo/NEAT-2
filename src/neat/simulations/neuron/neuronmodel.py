@@ -278,7 +278,7 @@ class NeuronSimNode(PhysNode):
     def __init__(self, index, p3d=None):
         super().__init__(index, p3d)
 
-    def _make_section(self, factorlambda=1.0, pprint=False):
+    def _make_section(self, channel_storage, factorlambda=1.0, pprint=False):
         compartment = h.Section(name=str(self.index))
         compartment.push()
         # create the compartment
@@ -306,16 +306,20 @@ class NeuronSimNode(PhysNode):
         compartment.Ra = self.r_a * 1e6  # MOhm*cm --> Ohm*cm
         # insert membrane currents
         for key, current in self.currents.items():
+            # check if the current has a reversal potential that needs to be set
+            uses_e_rev = (key == 'L') # True if leak, False otherwise
+            if key != 'L' and channel_storage[key]._uses_e_rev:
+                uses_e_rev = True
+
             if current[0] > 1e-10:
                 try:
                     compartment.insert(mechname[key])
                 except ValueError as e:
                     raise ValueError(str(e) + f" {mechname[key]}")
                 for seg in compartment:
-                    exec(
-                        "seg." + mechname[key] + ".g = " + str(current[0]) + "*1e-6"
-                    )  # uS/cm^2 --> S/cm^2
-                    exec("seg." + mechname[key] + ".e = " + str(current[1]))  # mV
+                    exec("seg." + mechname[key] + ".g = " + str(current[0]) + "*1e-6")  # uS/cm^2 --> S/cm^2
+                    if uses_e_rev:
+                        exec("seg." + mechname[key] + ".e = " + str(current[1]))  # mV
         # insert concentration mechanisms
         for ion, params in self.concmechs.items():
             compartment.insert(mechname[ion])
@@ -506,7 +510,9 @@ class NeuronSimTree(PhysTree):
     def _create_neuron_tree(self, pprint):
         for node in self:
             # create the NEURON section
-            compartment = node._make_section(self.factor_lambda, pprint=pprint)
+            compartment = node._make_section(
+                self.channel_storage, self.factor_lambda, pprint=pprint
+            )
             # connect with parent section
             if not self.is_root(node):
                 compartment.connect(self.sections[node.parent_node.index], 1, 0)
@@ -1438,7 +1444,7 @@ class NeuronCompartmentNode(NeuronSimNode):
     def get_child_nodes(self, skip_inds=[]):
         return super().get_child_nodes(skip_inds=skip_inds)
 
-    def _make_section(self, pprint=False):
+    def _make_section(self, channel_storage, pprint=False):
         compartment = neuron.h.Section(name=str(self.index))
         compartment.push()
         # create the compartment
@@ -1461,13 +1467,19 @@ class NeuronCompartmentNode(NeuronSimNode):
         compartment.Ra = self.r_a * 1e6  # MOhm*cm --> Ohm*cm
         # insert membrane currents
         for key, current in self.currents.items():
+            # check if the current has a reversal potential that needs to be set
+            uses_e_rev = (key == 'L') # True if leak, False otherwise
+            if key != 'L' and channel_storage[key]._uses_e_rev:
+                uses_e_rev = True
+
             if current[0] > 1e-10:
                 compartment.insert(mechname[key])
                 for seg in compartment:
                     exec(
                         "seg." + mechname[key] + ".g = " + str(current[0]) + "*1e-6"
                     )  # uS/cm^2 --> S/cm^2
-                    exec("seg." + mechname[key] + ".e = " + str(current[1]))  # mV
+                    if uses_e_rev:
+                        exec("seg." + mechname[key] + ".e = " + str(current[1]))  # mV
         # insert concentration mechanisms
         for ion, params in self.concmechs.items():
             compartment.insert(mechname[ion])
@@ -1640,7 +1652,7 @@ class NeuronCompartmentTree(NeuronSimTree):
     def _create_neuron_tree(self, pprint):
         for node in self:
             # create the NEURON section
-            compartment = node._make_section(pprint=pprint)
+            compartment = node._make_section(self.channel_storage, pprint=pprint)
             # connect with parent section
             if not self.is_root(node):
                 compartment.connect(self.sections[node.parent_node.index], 0.5, 0)

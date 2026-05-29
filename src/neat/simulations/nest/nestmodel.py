@@ -118,7 +118,9 @@ class NestCompartmentNode(CompartmentNode):
             f"gbar_{key}": self.currents[key][0] for key in self.currents if key != "L"
         }
         e_dict = {
-            f"e_{key}": self.currents[key][1] for key in self.currents if key != "L"
+            f"e_{key}": self.currents[key][1]
+            for key in self.currents
+            if key != "L" and channel_storage[key]._uses_e_rev
         }
 
         # concentration mech parameters
