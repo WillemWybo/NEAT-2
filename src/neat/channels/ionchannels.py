@@ -338,6 +338,28 @@ def _piecewise_to_nestml_expr(expr):
     return expr
 
 
+def _drop_piecewise_guards(expr):
+    """Replace every Piecewise with its else-branch (the True-condition clause).
+
+    Removes singularity guards (vtrap/efun-style Piecewise) from expressions,
+    leaving the regular analytic branch. The result can be inlined into NESTML
+    ``inline`` equations so NESTML's auto-differentiator can handle it without
+    emitting invalid ``Derivative(...)`` calls.
+    """
+    expr = sp.sympify(expr)
+    if isinstance(expr, sp.Piecewise):
+        for value, cond in expr.args:
+            if cond is sp.true or cond == True:
+                return _drop_piecewise_guards(value)
+        return _drop_piecewise_guards(expr.args[0][0])
+    if not expr.args:
+        return expr
+    new_args = [_drop_piecewise_guards(arg) for arg in expr.args]
+    if any(new_arg != old_arg for new_arg, old_arg in zip(new_args, expr.args)):
+        return _rebuild_sympy_expr(expr, new_args)
+    return expr
+
+
 def _nestml_function_assignment(lhs, expr):
     expr = _piecewise_to_nestml_expr(expr)
     return f"        {lhs} = {_nestml_ccode(expr)}\n"
@@ -1215,6 +1237,9 @@ class IonChannel(object):
         e = self._get_reversal(e)
         sv_init = self.compute_varinf(v_comp)
 
+        ohmic_df = self.sp_v - sp.Symbol("e")
+        is_ohmic = (self.driving_force == ohmic_df)
+
         blocks_dict = {block: "" for block in blocks}
 
         func_call_args = ["v_comp real"]
@@ -1253,11 +1278,23 @@ class IonChannel(object):
                     self.sp_v, sp.symbols("v_comp", real=True)
                 )
 
+            if is_ohmic:
+                df_str = "(e_%s - v_comp)" % cname
+            else:
+                # inline the regular (else) branch of the driving force, dropping
+                # singularity guards (vtrap/efun Piecewise); NESTML's
+                # auto-differentiator cannot handle function calls in inline equations
+                df_expr = self._substitute_defaults(self.driving_force)
+                df_expr = df_expr.subs(self.sp_v, sp.Symbol("v_comp"))
+                for ckey in self.conc:
+                    df_expr = df_expr.subs(ckey, sp.Symbol(f"c_{ckey}"))
+                df_expr = _drop_piecewise_guards(df_expr)
+                df_str = "(%s)" % _nestml_ccode(df_expr)
             eq_str = (
                 "\n"
                 + "        # equation %s\n" % cname
-                + "        inline i_%s real = gbar_%s * (%s) * (e_%s - v_comp) @mechanism::channel\n"
-                % (cname, cname, str(p_open_), cname)
+                + "        inline i_%s real = gbar_%s * (%s) * %s @mechanism::channel\n"
+                % (cname, cname, str(p_open_), df_str)
             )
 
             for var, var_suff, svar in zip(sv, sv_suff, self.ordered_statevars):
