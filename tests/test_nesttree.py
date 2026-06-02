@@ -317,8 +317,10 @@ class TestNest:
         self.tree = PhysTree(os.path.join(MORPHOLOGIES_PATH_PREFIX, "ball.swc"))
         self.tree.set_physiology(0.8, 100.0 / 1e6)
         self.ghk_chan = channelcollection.GHKChan()
+        # self.ghk_chan = channelcollection.SK_E2()
         # e_rev stored in the node but not used in the GHK computation
         self.tree.add_channel_current(self.ghk_chan, 0.01 * 1e6, 50.0)
+        # self.tree.add_conc_mech('ca', params=dict(gamma=0.01, tau=100.0))
         self.tree.fit_leak_current(-75.0, 10.0)
         self.tree.set_v_ep(-75.0)
         self.tree.set_comp_tree()
@@ -333,13 +335,16 @@ class TestNest:
 
         self.load_ghk_ball()
 
+        t_cal = 500.
+        t_sim = 200.
+        t_spks = np.array([20.0, 23.0, 40.0]) 
         # NEURON simulation
         csimtree_neuron = NeuronCompartmentTree(self.ctree)
-        csimtree_neuron.init_model(dt=dt, t_calibrate=200.0)
+        csimtree_neuron.init_model(dt=dt, t_calibrate=t_cal)
         csimtree_neuron.store_locs([(0, 0.5)], name="rec locs")
         csimtree_neuron.add_double_exp_synapse((0, 0.5), 0.2, 3.0, 0.0)
-        csimtree_neuron.set_spiketrain(0, 0.01, [20.0, 23.0, 40.0])
-        res_neuron = csimtree_neuron.run(200.0)
+        csimtree_neuron.set_spiketrain(0, 0.01, t_spks.tolist())
+        res_neuron = csimtree_neuron.run(t_sim)
 
         # NEST simulation
         csimtree_nest = NestCompartmentTree(self.ctree)
@@ -351,7 +356,7 @@ class TestNest:
                 "params": {"e_AMPA": 0.0, "tau_r_AMPA": 0.2, "tau_d_AMPA": 3.0},
             }
         ]
-        sg = nest.Create("spike_generator", 1, {"spike_times": [220.0, 223.0, 240.0]})
+        sg = nest.Create("spike_generator", 1, {"spike_times": (t_spks + t_cal).tolist()})
         nest.Connect(
             sg,
             nestmodel,
@@ -366,25 +371,25 @@ class TestNest:
             "multimeter", 1, {"record_from": ["v_comp0"], "interval": dt}
         )
         nest.Connect(mm, nestmodel)
-        nest.Simulate(400.0)
+        nest.Simulate(t_cal + t_sim)
         res_nest = nest.GetStatus(mm, "events")[0]
 
-        idx0 = int(200.0 / dt)
+        idx0 = int(t_cal / dt)
         res_nest["times"] = res_nest["times"][idx0:] - res_nest["times"][idx0]
         res_nest["v_comp0"] = res_nest["v_comp0"][idx0:]
 
         idx1 = min(len(res_neuron["v_m"][0]), len(res_nest["v_comp0"]))
-        # assert (
-        #     np.sqrt(
-        #         np.mean(
-        #             (res_nest["v_comp0"][:idx1] - res_neuron["v_m"][0][:idx1]) ** 2
-        #         )
-        #     )
-        #     < 0.05
-        # )
-        # assert np.allclose(
-        #     res_nest["v_comp0"][:idx1], res_neuron["v_m"][0][:idx1], atol=1.0
-        # )
+        assert (
+            np.sqrt(
+                np.mean(
+                    (res_nest["v_comp0"][:idx1] - res_neuron["v_m"][0][:idx1]) ** 2
+                )
+            )
+            < 0.05
+        )
+        assert np.allclose(
+            res_nest["v_comp0"][:idx1], res_neuron["v_m"][0][:idx1], atol=1.0
+        )
 
         if pplot:
             pl.figure()

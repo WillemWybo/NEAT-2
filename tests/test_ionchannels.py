@@ -409,6 +409,22 @@ class TestGHKDrivingForce:
         assert "WRITE ica" in useion_lines[0]
         assert "ca_ext" not in text
 
+    def test_ghk_nestml_uses_inward_positive_sign(self):
+        """
+        NEST exports channel currents as inward-positive.
+
+        For non-ohmic channels, this means the stored NEURON-style driving
+        force must be negated when generating the NESTML current equation.
+        """
+        ch = channelcollection.GHKChan()
+        text = ch.write_nestml_blocks(blocks=["equations"])["equations"]
+        line = next(
+            line.strip() for line in text.splitlines() if "inline i_GHKChan real =" in line
+        )
+        assert "inline i_GHKChan real =" in line
+        assert "* (13.182244584683609" in line
+        assert "* (-13.182244584683609" not in line
+
     def test_ohmic_regression(self):
         """Na_Ta and SK give identical outputs regardless of GHK driving-force layer."""
         na = channelcollection.Na_Ta()

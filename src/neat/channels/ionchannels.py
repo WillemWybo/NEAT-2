@@ -1329,10 +1329,16 @@ class IonChannel(object):
             if is_ohmic:
                 df_str = "(e_%s - v_comp)" % cname
             else:
-                # inline the regular (else) branch of the driving force, dropping
-                # singularity guards (vtrap/efun Piecewise); NESTML's
-                # auto-differentiator cannot handle function calls in inline equations
-                df_expr = self._substitute_defaults(self.driving_force)
+                # NEST channel currents are inward-positive, while NEAT stores
+                # driving_force in the NEURON/outward-current convention.
+                # Flip the sign here so non-ohmic exports match the ohmic
+                # (e_rev - v_comp) convention used above.
+                #
+                # Inline the regular (else) branch of the driving force,
+                # dropping singularity guards (vtrap/efun Piecewise);
+                # NESTML's auto-differentiator cannot handle function calls in
+                # inline equations.
+                df_expr = -self._substitute_defaults(self.driving_force)
                 df_expr = df_expr.subs(self.sp_v, sp.Symbol("v_comp"))
                 for ckey in self.conc:
                     df_expr = df_expr.subs(ckey, sp.Symbol(f"c_{ckey}"))

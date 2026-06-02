@@ -134,6 +134,43 @@ def _mark_neuron_model_loaded(model_path):
     _LOADED_NEURON_MODELS.add(_normalize_model_path(model_path))
 
 
+def _apply_neat_neuron_defaults():
+    """
+    Apply NEAT physiology defaults to the global NEURON runtime.
+
+    NEURON stores default ion concentrations in runtime globals such as
+    ``nai0_na_ion`` and ``cai0_ca_ion``. Newly created sections inherit from
+    these values, so setting them once at the runtime level is cleaner than
+    patching each model instance separately.
+    """
+    try:
+        default_phys = DefaultPhysiology()
+    except Exception:
+        return
+
+    temp = getattr(default_phys, "temp", None)
+    if temp is not None:
+        try:
+            h.celsius = temp
+        except (AttributeError, LookupError):
+            pass
+
+    for ion, value in getattr(default_phys, "conc", {}).items():
+        try:
+            setattr(h, f"{ion}i0_{ion}_ion", value)
+        except (AttributeError, LookupError):
+            pass
+
+    for ion, value in getattr(default_phys, "conc_ext", {}).items():
+        try:
+            setattr(h, f"{ion}o0_{ion}_ion", value)
+        except (AttributeError, LookupError):
+            pass
+
+
+_apply_neat_neuron_defaults()
+
+
 def _get_neuron_runtime_metadata():
     return {
         "neuron_version": neuron.__version__,
@@ -210,11 +247,13 @@ def load_neuron_model(name):
         )
         if os.path.exists(path):
             if _is_neuron_model_loaded(model_path):
+                _apply_neat_neuron_defaults()
                 return
             _validate_neuron_build_metadata(model_path)
             try:
                 h.nrn_load_dll(path)  # load all mechanisms
                 _mark_neuron_model_loaded(model_path)
+                _apply_neat_neuron_defaults()
             except Exception as err:
                 if should_wrap_load_exception(err):
                     raise_load_err(path, err)
@@ -231,6 +270,7 @@ def load_neuron_model(name):
             print(f"Found path: {model_path}, loading mechanisms...")
             if _is_neuron_model_loaded(model_path):
                 print("... already loaded.")
+                _apply_neat_neuron_defaults()
                 return
             _validate_neuron_build_metadata(model_path)
             if not USE_CORENEURON:
@@ -246,6 +286,7 @@ def load_neuron_model(name):
                         f"Loading mechanisms from '{model_path}' failed."
                     )
             _mark_neuron_model_loaded(model_path)
+            _apply_neat_neuron_defaults()
             print(f"... done.")
         else:
             print_err()
