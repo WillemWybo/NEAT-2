@@ -37,8 +37,7 @@ from ...factorydefaults import DefaultPhysiology
 
 def check_for_coreneuron():
     return (
-        "CORENEURON_PRELOADED_MODEL" in os.environ
-        or "CORENRN_PYTHONEXE" in os.environ
+        "CORENEURON_PRELOADED_MODEL" in os.environ or "CORENRN_PYTHONEXE" in os.environ
     )
 
 
@@ -114,10 +113,25 @@ class NeuronMechanismLoadError(RuntimeError):
     pass
 
 
+_LOADED_NEURON_MODELS = set()
+
+
 def _normalize_executable_path(path):
     if path is None:
         return None
     return os.path.realpath(path)
+
+
+def _normalize_model_path(path):
+    return os.path.realpath(path)
+
+
+def _is_neuron_model_loaded(model_path):
+    return _normalize_model_path(model_path) in _LOADED_NEURON_MODELS
+
+
+def _mark_neuron_model_loaded(model_path):
+    _LOADED_NEURON_MODELS.add(_normalize_model_path(model_path))
 
 
 def _get_neuron_runtime_metadata():
@@ -164,7 +178,6 @@ def _validate_neuron_build_metadata(model_path):
         )
 
 
-
 def load_neuron_model(name):
     def print_err():
         path_name = os.path.join(os.path.dirname(__file__), "tmp/")
@@ -196,9 +209,12 @@ def load_neuron_model(name):
             f"tmp/{name}/{platform.machine()}/.libs/libnrnmech.so",
         )
         if os.path.exists(path):
+            if _is_neuron_model_loaded(model_path):
+                return
             _validate_neuron_build_metadata(model_path)
             try:
                 h.nrn_load_dll(path)  # load all mechanisms
+                _mark_neuron_model_loaded(model_path)
             except Exception as err:
                 if should_wrap_load_exception(err):
                     raise_load_err(path, err)
@@ -213,6 +229,9 @@ def load_neuron_model(name):
         )
         if os.path.exists(model_path):
             print(f"Found path: {model_path}, loading mechanisms...")
+            if _is_neuron_model_loaded(model_path):
+                print("... already loaded.")
+                return
             _validate_neuron_build_metadata(model_path)
             if not USE_CORENEURON:
                 # only needs to be loaded if we are not running using special
@@ -226,6 +245,7 @@ def load_neuron_model(name):
                     raise FileNotFoundError(
                         f"Loading mechanisms from '{model_path}' failed."
                     )
+            _mark_neuron_model_loaded(model_path)
             print(f"... done.")
         else:
             print_err()
@@ -1506,7 +1526,7 @@ class NeuronCompartmentTree(NeuronSimTree):
     derived.
     """
 
-    def __init__(self, ctree, fake_c_m=1.0, fake_r_a=100.0 * 1e-6):
+    def __init__(self, ctree, fake_c_m=1.0, fake_r_a=100.0 * 1e-6, method=2):
 
         try:
             assert issubclass(ctree.__class__, CompartmentTree)
@@ -1521,11 +1541,11 @@ class NeuronCompartmentTree(NeuronSimTree):
             ctree,
             fake_c_m=fake_c_m,
             fake_r_a=fake_r_a,
-            method='neuron2',
+            method=method,
         )
 
     def _create_reduced_neuron_model(
-        self, ctree, fake_c_m=1.0, fake_r_a=100.0 * 1e-6, method='neuron2'
+        self, ctree, fake_c_m=1.0, fake_r_a=100.0 * 1e-6, method=2
     ):
         # calculate geometry that will lead to correct constants
         arg1, arg2 = ctree.compute_fake_geometry(
@@ -1533,9 +1553,9 @@ class NeuronCompartmentTree(NeuronSimTree):
             fake_r_a=fake_r_a,
             factor_r_a=1e-6,
             delta=1e-10,
-            method=method,
+            method=f"neuron{method}",
         )
-        if method == 'neuron1':
+        if method == 1:
             points = arg1
             surfaces = arg2
             for ii, comp_node in enumerate(ctree):
@@ -1558,7 +1578,7 @@ class NeuronCompartmentTree(NeuronSimTree):
                 sim_node.c_m = fake_c_m
                 sim_node.r_a = fake_r_a
                 sim_node.content["points_3d"] = points[comp_node.index]
-        elif method == 'neuron2':
+        elif method == 2:
             lengths = arg1
             radii = arg2
             surfaces = 2.0 * np.pi * radii * lengths

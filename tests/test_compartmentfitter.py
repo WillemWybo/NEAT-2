@@ -25,9 +25,16 @@ import os
 import pytest
 import pickle
 
-from neat import MorphTree, PhysTree, GreensTree, SOVTree, NeuronCompartmentTree
-from neat import CompartmentFitter, CachedGreensTree, GreensTreeTime
-from neat import CompartmentTree
+from neat import (
+    MorphTree,
+    PhysTree,
+    GreensTree,
+    SOVTree,
+    NeuronCompartmentTree,
+    CompartmentFitter,
+    CachedGreensTree
+    check_for_coreneuron,
+)
 import neat.modelreduction.compartmentfitter as compartmentfitter
 
 import channelcollection_for_tests as channelcollection
@@ -38,6 +45,10 @@ channel_installer.load_or_install_neuron_test_channels()
 
 MORPHOLOGIES_PATH_PREFIX = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "test_morphologies")
+)
+SKIP_ACTIVE_MECHS_WITH_CORENEURON = pytest.mark.skipif(
+    check_for_coreneuron(),
+    reason="Active mechanism tests are skipped when running with CoreNEURON",
 )
 
 
@@ -155,6 +166,7 @@ class TestCompartmentFitter:
         for node in tree:
             assert set(node.currents.keys()) == set(channel_names + ["L"])
 
+    @SKIP_ACTIVE_MECHS_WITH_CORENEURON
     def test_create_tree_gf(self):
         self.load_ball()
         cm = CompartmentFitter(self.tree, cache_path="neatcache/")
@@ -266,6 +278,7 @@ class TestCompartmentFitter:
 
         return fit_mats_na, fit_mats_k
 
+    @SKIP_ACTIVE_MECHS_WITH_CORENEURON
     def test_channel_fit_mats(self):
         self.load_ball()
         cm = CompartmentFitter(
@@ -357,6 +370,7 @@ class TestCompartmentFitter:
 
         # TODO: write similar test for fit_cfg and concmech_cfg
 
+    @SKIP_ACTIVE_MECHS_WITH_CORENEURON
     def test_passive_fit(self):
         self.load_T_tree()
         fit_locs = [(1, 0.5), (4, 1.0), (5, 0.5), (8, 0.5)]
@@ -450,6 +464,7 @@ class TestCompartmentFitter:
         with pytest.raises(AssertionError):
             self._check_pas_cond_props(ctree_leak, ctree_all)
 
+    @SKIP_ACTIVE_MECHS_WITH_CORENEURON
     def test_recalc_impedance_matrix(self, g_inp=np.linspace(0.0, 0.01, 20)):
         self.load_ball()
         fit_locs = [(1, 0.5)]
@@ -623,6 +638,7 @@ class TestCompartmentFitter:
 
         self.ctree = ctree
 
+    @SKIP_ACTIVE_MECHS_WITH_CORENEURON
     def test_fit_model(self):
         self.load_T_tree()
         fit_locs = [(1, 0.5), (4, 1.0), (5, 0.5), (8, 0.5)]
@@ -662,6 +678,7 @@ class TestCompartmentFitter:
         self._check_all_curr_props(self.ctree, ctree_cm_1)
         self._check_all_curr_props(self.ctree, ctree_cm_2)
 
+    @SKIP_ACTIVE_MECHS_WITH_CORENEURON
     def test_pickling(self):
         self.load_ball()
 
@@ -689,6 +706,7 @@ class TestCompartmentFitter:
         st_ = pickle.loads(ss)
         self._check_phys_trees(sov_tree, st_)
 
+    @SKIP_ACTIVE_MECHS_WITH_CORENEURON
     def test_cacheing(self):
         self.load_T_segment_tree()
         locs = [(1, 0.5), (4, 0.9)]
@@ -739,6 +757,7 @@ class TestCompartmentFitter:
         )
         assert repr(tree_na_1) == repr(tree_na_2)
 
+    @SKIP_ACTIVE_MECHS_WITH_CORENEURON
     def test_fit_storage(self):
         self.load_T_segment_tree()
         locs = [(1, 0.5), (4, 0.9)]
@@ -783,6 +802,7 @@ class TestCompartmentFitter:
         ):
             cm.remove_fit("not defined")
 
+    @SKIP_ACTIVE_MECHS_WITH_CORENEURON
     def test_e_eq_fit(self):
         self.load_ball()
         cm = CompartmentFitter(self.tree, save_cache=False)
@@ -813,6 +833,7 @@ class TestCompartmentFitter:
         assert v_eq_sim == pytest.approx(v_eq_target)
 
 
+<<<<<<< HEAD
 class TestAdmittanceCorrection:
     """
     Tests for the admittance-kernel correction feature of `CompartmentFitter`
@@ -1135,6 +1156,9 @@ class TestAdmittanceCorrection:
         assert err_hyb <= err_red + 1e-9
 
 
+=======
+@SKIP_ACTIVE_MECHS_WITH_CORENEURON
+>>>>>>> master
 def test_expansion_points():
     kv3_1 = channelcollection.Kv3_1()
     na_ta = channelcollection.Na_Ta()

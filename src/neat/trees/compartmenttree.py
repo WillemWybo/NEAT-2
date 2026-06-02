@@ -823,20 +823,6 @@ class CompartmentTree(STree):
         for node in self:
             node.expansion_points = {}
 
-    def fit_e_leak(self):
-        """
-        Fit the leak reversal potential to obtain the stored equilibirum potentials
-        as resting membrane potential
-        """
-        e_l_0 = self.get_e_eq(indexing="tree")
-        # compute the solutions
-        fun = self._fun_e_leak_fit(e_l_0)
-        jac = self._jac_e_leak_fit(e_l_0)
-        e_l = np.linalg.solve(jac, -fun + np.dot(jac, e_l_0))
-        # set the leak reversals
-        for ii, node in enumerate(self):
-            node.currents["L"] = [node.currents["L"][0], e_l[ii]]
-
     def _fun_e_leak_fit(self, e_l):
         # set the leak reversal potentials
         for ii, node in enumerate(self):
@@ -856,8 +842,25 @@ class CompartmentTree(STree):
     def _jac_e_leak_fit(self, e_l):
         for ii, node in enumerate(self):
             node.currents["L"][1] = e_l[ii]
-        jac_vals = np.array([-node.currents["L"][0] for node in self])
-        return np.diag(jac_vals)
+        return np.ma.masked_array(
+            [-node.currents["L"][0] for node in self],
+            mask=[node.currents["L"][0] < 1e-16 for node in self],
+        )
+
+    def fit_e_leak(self):
+        """
+        Fit the leak reversal potential to obtain the stored equilibirum potentials
+        as resting membrane potential
+        """
+        e_l_0 = self.get_e_eq(indexing="tree")
+
+        fun = self._fun_e_leak_fit(e_l_0)
+        jac = self._jac_e_leak_fit(e_l_0)
+        e_l = (-fun + jac * e_l_0) / jac
+        # set the leak reversals
+        for ii, node in enumerate(self):
+            if not e_l.mask[ii]:
+                node.currents["L"] = [node.currents["L"][0], e_l[ii]]
 
     def add_channel_current(self, channel, e_rev):
         """
@@ -1992,7 +1995,7 @@ class CompartmentTree(STree):
         fake_r_a=100.0 * 1e-6,
         factor_r_a=1e-6,
         delta=1e-14,
-        method="neuron2",
+        method=2,
     ):
         """
         Computes a fake geometry so that the neuron model is a reduced
@@ -2071,17 +2074,19 @@ class CompartmentTree(STree):
             radii = np.cbrt(fake_r_a * surfaces / (4.0 * np.pi**2 * sol))
             lengths = surfaces / (2.0 * np.pi * radii)
 
-            #---- test
-            g_a = np.pi * radii**2 / (fake_r_a * lengths/2)
-            g_b = np.pi * radii**2 / (fake_r_a * lengths/2)
+            # ---- test
+            g_a = np.pi * radii**2 / (fake_r_a * lengths / 2)
+            g_b = np.pi * radii**2 / (fake_r_a * lengths / 2)
             g_c = 1 / (1 / g_a[1:] + 1 / g_b[:-1])
-            g_c_ = 1. / vec_coupling
+            g_c_ = 1.0 / vec_coupling
             # -----
             # radii = np.cbrt(fake_r_a * surfaces / (vec_coupling * (2.0 * np.pi) ** 2))
-            # lengths = surfaces / (4.0 * np.pi * radii) 
+            # lengths = surfaces / (4.0 * np.pi * radii)
             return lengths, radii
         else:
-            raise ValueError(f"Invalid `method` argument (provided `{method}`), choose from 'neuron1', 'neuron2' or 'brian2'")
+            raise ValueError(
+                f"Invalid `method` argument (provided `{method}`), choose from 'neuron1', 'neuron2' or 'brian2'"
+            )
 
     def plot_dendrogram(
         self,
