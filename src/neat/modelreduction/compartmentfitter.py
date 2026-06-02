@@ -336,7 +336,10 @@ class CompartmentFitter(EquilibriumTree):
                 if c_name in node.currents:
                     e_revs.append(node.currents[c_name][1])
             # reversal potential is the same throughout the reduced model
-            ctree.add_channel_current(copy.deepcopy(channel), np.mean(e_revs))
+            ctree.add_channel_current(
+                copy.deepcopy(channel), 
+                np.mean(e_revs) if None not in e_revs else None
+            )
 
         for node in ctree:
             loc_idx = node.loc_idx

@@ -220,6 +220,31 @@ def test_broadcasting():
     assert np.allclose(tauinf["b"], np.array([0.1, 0.1, 50.0]))
 
 
+def test_nestml_piecewise_functions_are_not_collapsed():
+    """
+    NESTML export must preserve branch logic for vtrap/piecewise kinetics.
+
+    If these functions are flattened to the first branch, NaTa_t opens
+    incorrectly near rest and NEST initialization depolarizes immediately.
+    """
+
+    def _extract_function_block(text, name):
+        start = text.index(f"function {name} ")
+        end = text.find("\n    function ", start + 1)
+        return text[start:] if end == -1 else text[start:end]
+
+    na_ta_t = channelcollection.NaTa_t()
+    func_block = na_ta_t.write_nestml_blocks(blocks=["function"])["function"]
+
+    m_block = _extract_function_block(func_block, "m_inf_NaTa_t")
+    h_block = _extract_function_block(func_block, "h_inf_NaTa_t")
+
+    assert "if " in m_block and "else:" in m_block
+    assert "if " in h_block and "else:" in h_block
+    assert "exp(" in m_block
+    assert "exp(" in h_block
+
+
 class TestDirectDependencies:
     """
     Tests for first-class direct p_open(v, c, x) dependencies on voltage and concentration.

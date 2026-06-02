@@ -1375,13 +1375,10 @@ class IonChannel(object):
                     self.sp_v, sp.symbols("v_comp", real=True)
                 )
 
-                if _needs_nestml_piecewise_lowering(varinf_func):
-                    value_str = _nestml_function_assignment('val', varinf_func)
-                else:
-                    code_str = sp.pycode(varinf_func, fully_qualified_modules=False)
-                    value_str = self._create_nestml_funcstr(
-                        code_str, n_spaces=4, indent=8
-                    )
+                code_str = sp.pycode(varinf_func, fully_qualified_modules=False)
+                value_str = self._create_nestml_funcstr(
+                    code_str, n_spaces=4, indent=8
+                )
 
                 func_str += (
                     f"    function {sv_}_inf_{cname} ({func_call_args}) real:\n"
@@ -1402,13 +1399,10 @@ class IonChannel(object):
                     self.sp_v, sp.symbols("v_comp", real=True)
                 )
 
-                if _needs_nestml_piecewise_lowering(tauinf_func):
-                    value_str = _nestml_function_assignment('val', tauinf_func)
-                else:
-                    code_str = sp.pycode(tauinf_func, fully_qualified_modules=False)
-                    value_str = self._create_nestml_funcstr(
-                        code_str, n_spaces=4, indent=8
-                    )
+                code_str = sp.pycode(tauinf_func, fully_qualified_modules=False)
+                value_str = self._create_nestml_funcstr(
+                    code_str, n_spaces=4, indent=8
+                )
 
                 func_str += (
                     f"\n    function tau_{sv_}_{cname} ({func_call_args}) real:\n"
