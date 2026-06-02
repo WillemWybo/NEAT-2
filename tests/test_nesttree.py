@@ -99,7 +99,7 @@ class TestNest:
         channel_installer.load_or_install_nest_test_channels()
         nest.SetKernelStatus(dict(resolution=dt))
 
-        v_eq = -65.
+        v_eq = -65.0
         self.load_ball()
         self.tree.fit_leak_current(v_eq, 10.0)
         # set computational tree
@@ -335,9 +335,9 @@ class TestNest:
 
         self.load_ghk_ball()
 
-        t_cal = 500.
-        t_sim = 200.
-        t_spks = np.array([20.0, 23.0, 40.0]) 
+        t_cal = 500.0
+        t_sim = 200.0
+        t_spks = np.array([20.0, 23.0, 40.0])
         # NEURON simulation
         csimtree_neuron = NeuronCompartmentTree(self.ctree)
         csimtree_neuron.init_model(dt=dt, t_calibrate=t_cal)
@@ -356,7 +356,9 @@ class TestNest:
                 "params": {"e_AMPA": 0.0, "tau_r_AMPA": 0.2, "tau_d_AMPA": 3.0},
             }
         ]
-        sg = nest.Create("spike_generator", 1, {"spike_times": (t_spks + t_cal).tolist()})
+        sg = nest.Create(
+            "spike_generator", 1, {"spike_times": (t_spks + t_cal).tolist()}
+        )
         nest.Connect(
             sg,
             nestmodel,
@@ -367,9 +369,7 @@ class TestNest:
                 "receptor_type": 0,
             },
         )
-        mm = nest.Create(
-            "multimeter", 1, {"record_from": ["v_comp0"], "interval": dt}
-        )
+        mm = nest.Create("multimeter", 1, {"record_from": ["v_comp0"], "interval": dt})
         nest.Connect(mm, nestmodel)
         nest.Simulate(t_cal + t_sim)
         res_nest = nest.GetStatus(mm, "events")[0]
@@ -381,9 +381,7 @@ class TestNest:
         idx1 = min(len(res_neuron["v_m"][0]), len(res_nest["v_comp0"]))
         assert (
             np.sqrt(
-                np.mean(
-                    (res_nest["v_comp0"][:idx1] - res_neuron["v_m"][0][:idx1]) ** 2
-                )
+                np.mean((res_nest["v_comp0"][:idx1] - res_neuron["v_m"][0][:idx1]) ** 2)
             )
             < 0.05
         )

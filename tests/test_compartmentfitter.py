@@ -884,9 +884,7 @@ def test_expansion_points():
     ca_default = two_var_conc_dep.conc["ca"]
     ca_args = np.full_like(v_act, ca_default, dtype=float)
     assert np.allclose(two_var_conc_dep.f_varinf["m"](v_act, ca_args), sv_hs["m"])
-    assert np.allclose(
-        two_var_conc_dep.f_varinf["h"](v_inact, ca_args), sv_hs["h"]
-    )
+    assert np.allclose(two_var_conc_dep.f_varinf["h"](v_inact, ca_args), sv_hs["h"])
     assert np.allclose(sv_hs["ca"], np.full_like(v_act, ca_default, dtype=float))
 
 

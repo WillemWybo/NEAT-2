@@ -306,7 +306,9 @@ class TestDirectDependencies:
             return minf / (1.0 + np.exp(-v / 10.0))
 
         dv = 1e-5
-        fd = ((e - (v0 + dv)) * p_ss(v0 + dv) - (e - (v0 - dv)) * p_ss(v0 - dv)) / (2.0 * dv)
+        fd = ((e - (v0 + dv)) * p_ss(v0 + dv) - (e - (v0 - dv)) * p_ss(v0 - dv)) / (
+            2.0 * dv
+        )
         neat_val = ch.compute_lin_sum(v0, 0.0, e=e)
         assert np.allclose(neat_val, fd, rtol=1e-4)
 
@@ -419,7 +421,9 @@ class TestGHKDrivingForce:
         ch = channelcollection.GHKChan()
         text = ch.write_nestml_blocks(blocks=["equations"])["equations"]
         line = next(
-            line.strip() for line in text.splitlines() if "inline i_GHKChan real =" in line
+            line.strip()
+            for line in text.splitlines()
+            if "inline i_GHKChan real =" in line
         )
         assert "inline i_GHKChan real =" in line
         assert "* (13.182244584683609" in line

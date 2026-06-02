@@ -379,7 +379,8 @@ class PhysNode(MorphNode):
         repr_dict.update(
             {
                 "currents": {
-                    c: (f"({g:1.6g}, {e:1.6g})") if e is not None else (f"({g:1.6g}, )") for c, (g, e) in self.currents.items()
+                    c: (f"({g:1.6g}, {e:1.6g})") if e is not None else (f"({g:1.6g}, )")
+                    for c, (g, e) in self.currents.items()
                 },
                 "concmechs": self.concmechs,
                 "c_m": f"{self.c_m:1.6g}",

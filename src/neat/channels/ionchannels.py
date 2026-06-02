@@ -183,8 +183,9 @@ def _nmodl_ccode(expr):
 def _nmodl_repl(text, repl_pairs):
     """Apply identifier substitutions using word boundaries to avoid partial matches."""
     import re
+
     for old, new in repl_pairs:
-        text = re.sub(r'\b' + re.escape(old) + r'\b', new, text)
+        text = re.sub(r"\b" + re.escape(old) + r"\b", new, text)
     return text
 
 
@@ -260,7 +261,12 @@ def _hoist_piecewise_for_nmodl(expr, temp_counter=0):
             locals_.extend(condition_locals)
             branch_specs.append((condition_expr, value_lines, value_expr, value_locals))
 
-        for branch_index, (condition, value_lines, value_expr, value_locals) in enumerate(branch_specs):
+        for branch_index, (
+            condition,
+            value_lines,
+            value_expr,
+            value_locals,
+        ) in enumerate(branch_specs):
             locals_.extend(value_locals)
             if condition == True or condition == sp.true:
                 lines.append("else {")
@@ -306,14 +312,21 @@ def _nmodl_assignment_lines(lhs, expr, temp_counter=0):
 
 
 def _nestml_ccode(expr):
-    return _nmodl_ccode(expr).replace("fabs(", "abs(").replace("fmax(", "max(").replace("fmin(", "min(")
+    return (
+        _nmodl_ccode(expr)
+        .replace("fabs(", "abs(")
+        .replace("fmax(", "max(")
+        .replace("fmin(", "min(")
+    )
 
 
 def _piecewise_to_nestml_expr(expr):
     expr = sp.sympify(expr)
 
     if isinstance(expr, sp.Piecewise):
-        if len(expr.args) == 2 and (expr.args[1][1] == True or expr.args[1][1] == sp.true):
+        if len(expr.args) == 2 and (
+            expr.args[1][1] == True or expr.args[1][1] == sp.true
+        ):
             value_if, condition = expr.args[0]
             value_else, _ = expr.args[1]
             value_if = _piecewise_to_nestml_expr(value_if)
@@ -580,7 +593,9 @@ class IonChannel(object):
         if not hasattr(self, "conc_ext"):
             self.conc_ext = {}
         if not hasattr(self.conc_ext, "values"):
-            self.conc_ext = {str(ion): self.cfg.conc_ext[str(ion)] for ion in self.conc_ext}
+            self.conc_ext = {
+                str(ion): self.cfg.conc_ext[str(ion)] for ion in self.conc_ext
+            }
 
         if not hasattr(self, "driving_force"):
             self.driving_force = self.sp_v - sp.Symbol("e")
@@ -1101,13 +1116,19 @@ class IonChannel(object):
             reads = [self.ion + "i"]
             if self.ion in self.conc_ext:
                 reads.append(self.ion + "o")
-            file.write("    USEION %s READ %s WRITE i%s\n" % (self.ion, ", ".join(reads), self.ion))
+            file.write(
+                "    USEION %s READ %s WRITE i%s\n"
+                % (self.ion, ", ".join(reads), self.ion)
+            )
         else:
             reads = []
             if self.ion in self.conc_ext:
                 reads.append(self.ion + "o")
             if reads:
-                file.write("    USEION %s READ %s WRITE i%s\n" % (self.ion, ", ".join(reads), self.ion))
+                file.write(
+                    "    USEION %s READ %s WRITE i%s\n"
+                    % (self.ion, ", ".join(reads), self.ion)
+                )
             else:
                 file.write("    USEION %s WRITE i%s\n" % (self.ion, self.ion))
         for c in cs:
@@ -1189,7 +1210,9 @@ class IonChannel(object):
         file.write("    %s\n" % calcstring)
         file.write("}\n\n")
 
-        conc_args = [str(c) + "i" for c in cs] + [str(ion) + "o" for ion in self.conc_ext]
+        conc_args = [str(c) + "i" for c in cs] + [
+            str(ion) + "o" for ion in self.conc_ext
+        ]
         concstring = (", " + ", ".join(conc_args)) if conc_args else ""
 
         file.write("INITIAL {\n")
@@ -1322,9 +1345,7 @@ class IonChannel(object):
             p_open_ = self.p_open
             for svar, sv_ in zip(self.ordered_statevars, sv_suff):
                 p_open_ = p_open_.subs(svar, sp.symbols(sv_))
-                p_open_ = p_open_.subs(
-                    self.sp_v, sp.symbols("v_comp", real=True)
-                )
+                p_open_ = p_open_.subs(self.sp_v, sp.symbols("v_comp", real=True))
 
             if is_ohmic:
                 df_str = "(e_%s - v_comp)" % cname
@@ -1374,17 +1395,13 @@ class IonChannel(object):
                 func_args = ", ".join(func_args)
                 #     varinf_func = varinf_func.subs(ckey, cval)
                 # print activation function to nestml file
-                varinf_func = varinf_func.subs(
-                    svar, sp.symbols(sv_suff_, real=True)
-                )
+                varinf_func = varinf_func.subs(svar, sp.symbols(sv_suff_, real=True))
                 varinf_func = varinf_func.subs(
                     self.sp_v, sp.symbols("v_comp", real=True)
                 )
 
                 code_str = sp.pycode(varinf_func, fully_qualified_modules=False)
-                value_str = self._create_nestml_funcstr(
-                    code_str, n_spaces=4, indent=8
-                )
+                value_str = self._create_nestml_funcstr(code_str, n_spaces=4, indent=8)
 
                 func_str += (
                     f"    function {sv_}_inf_{cname} ({func_call_args}) real:\n"
@@ -1398,17 +1415,13 @@ class IonChannel(object):
                 for ckey, cval in self.conc.items():
                     tauinf_func = tauinf_func.subs(ckey, cval)
 
-                tauinf_func = tauinf_func.subs(
-                    svar, sp.symbols(sv_suff_, real=True)
-                )
+                tauinf_func = tauinf_func.subs(svar, sp.symbols(sv_suff_, real=True))
                 tauinf_func = tauinf_func.subs(
                     self.sp_v, sp.symbols("v_comp", real=True)
                 )
 
                 code_str = sp.pycode(tauinf_func, fully_qualified_modules=False)
-                value_str = self._create_nestml_funcstr(
-                    code_str, n_spaces=4, indent=8
-                )
+                value_str = self._create_nestml_funcstr(code_str, n_spaces=4, indent=8)
 
                 func_str += (
                     f"\n    function tau_{sv_}_{cname} ({func_call_args}) real:\n"
@@ -1449,7 +1462,9 @@ class IonChannel(object):
             df_ccode = "(m_e_rev - v)"
             ddf_ccode = "-1."
         else:
-            df_expr = _drop_piecewise_guards(self._substitute_defaults(self.driving_force))
+            df_expr = _drop_piecewise_guards(
+                self._substitute_defaults(self.driving_force)
+            )
             df_ccode = sp.printing.ccode(df_expr).replace(str(self.sp_v), "v")
             df_ccode = _replaceConc(df_ccode, prefix="m_")
 
@@ -1582,7 +1597,10 @@ class IonChannel(object):
             fcc.write("    }" + "\n")
             fcc.write("    double %s = %s;\n" % (str(svar), vi_ccode))
 
-        fcc.write("    return %s * (%s - m_p_open_eq);\n" % (df_ccode, sp.printing.ccode(self.p_open)))
+        fcc.write(
+            "    return %s * (%s - m_p_open_eq);\n"
+            % (df_ccode, sp.printing.ccode(self.p_open))
+        )
         fcc.write("}\n")
 
         fcc.write("double %s::DfDvNewton(double v){\n" % c_name)

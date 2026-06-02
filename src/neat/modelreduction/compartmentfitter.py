@@ -337,8 +337,7 @@ class CompartmentFitter(EquilibriumTree):
                     e_revs.append(node.currents[c_name][1])
             # reversal potential is the same throughout the reduced model
             ctree.add_channel_current(
-                copy.deepcopy(channel), 
-                np.mean(e_revs) if None not in e_revs else None
+                copy.deepcopy(channel), np.mean(e_revs) if None not in e_revs else None
             )
 
         for node in ctree:
@@ -470,11 +469,7 @@ class CompartmentFitter(EquilibriumTree):
                 }
             )
             sv.update(
-                {
-                    str(ion): sv_h[ion][ii]
-                    for ion in channel.conc
-                    if str(ion) in sv_h
-                }
+                {str(ion): sv_h[ion][ii] for ion in channel.conc if str(ion) in sv_h}
             )
 
             # compute the fit matrices

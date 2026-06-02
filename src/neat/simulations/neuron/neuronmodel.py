@@ -348,8 +348,8 @@ class NeuronSimNode(PhysNode):
         # insert membrane currents
         for key, current in self.currents.items():
             # check if the current has a reversal potential that needs to be set
-            uses_e_rev = (key == 'L') # True if leak, False otherwise
-            if key != 'L' and channel_storage[key]._uses_e_rev:
+            uses_e_rev = key == "L"  # True if leak, False otherwise
+            if key != "L" and channel_storage[key]._uses_e_rev:
                 uses_e_rev = True
 
             if current[0] > 1e-10:
@@ -358,7 +358,9 @@ class NeuronSimNode(PhysNode):
                 except ValueError as e:
                     raise ValueError(str(e) + f" {mechname[key]}")
                 for seg in compartment:
-                    exec("seg." + mechname[key] + ".g = " + str(current[0]) + "*1e-6")  # uS/cm^2 --> S/cm^2
+                    exec(
+                        "seg." + mechname[key] + ".g = " + str(current[0]) + "*1e-6"
+                    )  # uS/cm^2 --> S/cm^2
                     if uses_e_rev:
                         exec("seg." + mechname[key] + ".e = " + str(current[1]))  # mV
         # insert concentration mechanisms
@@ -1509,8 +1511,8 @@ class NeuronCompartmentNode(NeuronSimNode):
         # insert membrane currents
         for key, current in self.currents.items():
             # check if the current has a reversal potential that needs to be set
-            uses_e_rev = (key == 'L') # True if leak, False otherwise
-            if key != 'L' and channel_storage[key]._uses_e_rev:
+            uses_e_rev = key == "L"  # True if leak, False otherwise
+            if key != "L" and channel_storage[key]._uses_e_rev:
                 uses_e_rev = True
 
             if current[0] > 1e-10:
