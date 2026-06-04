@@ -28,7 +28,7 @@ from matplotlib.lines import Line2D
 from ..trees.stree import STree
 from ..trees.phystree import PhysTree
 from ..trees.compartmenttree import CompartmentTree
-from ..tools.kernelextraction import Kernel, fExpFitter
+from ..tools.kernelextraction import Kernel, fExpFitter, FourierTools
 from ..channels.ionchannels import SPDict
 from ..factorydefaults import FitParams, MechParams
 from .cachetrees import CachedGreensTree, CachedSOVTree, EquilibriumTree
@@ -600,8 +600,8 @@ class CompartmentFitter(EquilibriumTree):
         Construct a `CachedGreensTree` whose membrane has been linearized
         ("passified") around the equilibrium potentials of the full tree.
 
-        This helper is shared between `fit_passive` (when
-        `use_all_channels=True`) and `compute_admittance_correction`. The
+        This helper is used by `fit_passive` (when
+        `use_all_channels=True`). The
         resulting tree is cache-backed using `self.cache_path` /
         `self.cache_name + "_eq" + suffix` and `... + "_gf" + suffix`, so
         repeated calls reuse cached evaluations.
@@ -1298,21 +1298,23 @@ class CompartmentFitter(EquilibriumTree):
                     f"a fit with {n_locs} locations."
                 )
 
-        # ---------- frequency grid (log-spaced complex frequencies) ----------
-        f_lo, f_hi = self.fit_cfg.freq_band
-        f_arr = np.logspace(np.log10(f_lo), np.log10(f_hi), 200)
-        s_arr = 2.0j * np.pi * f_arr
+        # frequency grid for admittance evaluation and fitting
+        ft = FourierTools(np.array([0.,0.1])) # dummy time array, we don't need it here
+        s_arr = ft.freqs_vfit
 
-        # ---------- Y_full(s) at all fit locations ----------
-        gtree = self._get_passified_greenstree()
+        # input impedances full model
+        gtree = self.create_tree_gf(
+            [],  # empty list of channel to include
+            cache_name_suffix="_pas_",
+        )
         gtree.set_impedances_in_tree(freqs=s_arr, pprint=pprint)
-        # `calc_impedance_matrix` returns shape (K, N, N) in MOhm
-        z_full = gtree.calc_impedance_matrix(locs)
+        zs_full = [gtree.calc_zf(loc, loc) for loc in locs]
 
-        # ---------- Y_red(s) at all fit locations ----------
-        z_red = ctree.calc_impedance_matrix(
+        # to be corrected input impedances reduced model
+        z_mat = ctree.calc_impedance_matrix(
             freqs=s_arr, channel_names=["L"], indexing="locs"
         )
+        zs_red = [z_mat[:, p, p] for p in kernel_correction]
 
         # negligibility threshold: an order of magnitude tighter than
         # `max_rel_error`, so we only skip when the residual is truly tiny.
@@ -1321,151 +1323,80 @@ class CompartmentFitter(EquilibriumTree):
         # use the existing rational-fit engine
         fef = fExpFitter()
 
-        for p in kernel_correction:
-            host = ctree.get_nodes_from_loc_idxs(p)
-            y_full_p = 1.0 / z_full[:, p, p]
-            y_red_p = 1.0 / z_red[:, p, p]
+        for ii, loc_idx in enumerate(kernel_correction):
+            host = ctree.get_nodes_from_loc_idxs(loc_idx)
+            y_full_p = 1.0 / zs_full[ii]
+            y_red_p = 1.0 / zs_red[ii]
             dy_p = y_full_p - y_red_p
 
-            norm_full = np.sqrt(np.sum(np.abs(y_full_p) ** 2))
-            norm_dy = np.sqrt(np.sum(np.abs(dy_p) ** 2))
+            # skip if the residual is negligible relative to the full admittance
+            if np.max(np.abs(dy_p) / np.abs(y_full_p)) < eps_skip:
+                continue
 
-            # ---- short-circuit: residual already negligible ----
-            if norm_full > 0 and norm_dy / norm_full < eps_skip:
+            # somatic capacitance correction
+            idx_bool = np.abs(s_arr) > 1e3
+            (dca,), _, _, _ = np.linalg.lstsq(s_arr[idx_bool][:,None].imag, dy_p[idx_bool].imag, rcond=None)
+            if pprint:
+                print(f'somatic capcitance correction dca = {dca} uF')
+            # apply capacitance correction to the host compartment and the residual
+            host.ca += dca
+            dy_p -= (dca * s_arr)
+
+            # pl.figure("impedance full/red")
+            # ax1, ax2, ax3 = pl.subplot(311), pl.subplot(312), pl.subplot(313)
+            # ax1.plot(s_arr.imag, np.abs(zs_full[ii]), 'b', label="full")
+            # ax1.plot(s_arr.imag, np.abs(zs_red[ii]), 'r--', label="red")
+            # ax1.legend(loc=0)
+            # ax2.plot(s_arr.imag, (dy_p).real, 'g', label="full real")
+            # ax2.plot(s_arr.imag, (dy_p).imag, 'g--', label="full imag")
+            # ax2.plot(s_arr.imag, np.abs(dy_p), 'g:', label="full abs")
+            # ax2.plot(s_arr.imag, (dca * s_arr).real, 'y', label="fit real")
+            # ax2.plot(s_arr.imag, (dca * s_arr).imag, 'y--', label="fit imag")
+            # ax2.plot(s_arr.imag, np.abs(dca * s_arr), 'y:', label="fit abs")
+            
+            # ax3.plot(s_arr.imag, (dy_p - (dca * s_arr)).real, 'm', label="residual real")
+            # ax3.plot(s_arr.imag, (dy_p - (dca * s_arr)).imag, 'm--', label="residual imag")
+            # ax3.plot(s_arr.imag, np.abs(dy_p - (dca * s_arr)), 'm:', label="residual abs")
+            # pl.show()
+
+            for Q in range(self.fit_cfg.min_degree, self.fit_cfg.max_degree+1, 4):
+                alphas, gammas, _, rms = fef.fitFExp(
+                    s_arr,
+                    dy_p,
+                    deg=Q,
+                    rtol=1e-4,
+                    realpoles=True,
+                    initpoles="log10",
+                    zerostart=False,
+                    constrained=True,
+                    reduce_numexp=False,
+                    return_real=True
+                )
                 if pprint:
-                    print(
-                        f">>> admittance correction (host loc {p}): "
-                        f"residual negligible "
-                        f"(||dY|| / ||Y_full|| = {norm_dy / norm_full:.2e}); "
-                        "skipping."
-                    )
-                continue
+                    print(f">>> admittance correction (host loc {loc_idx}, degree {Q}) rms = {rms}")
+                    print('fit done: rms = ', rms)
 
-            # ---- estimate the high-frequency feedthrough g_inf ----
-            # the natural target admittance form has high-frequency limit
-            # sum_q alpha_q; estimate it from the highest-frequency samples.
-            g_inf_guess = float(np.real(dy_p[-5:]).mean())
-            # if the asymptotic admittance is negative, the reduced model
-            # already over-loads the host at high frequency and no zero-DC
-            # passive correction can fix it: skip.
-            if g_inf_guess <= 0.0:
-                warnings.warn(
-                    f"Admittance correction at host loc {p}: "
-                    "estimated high-frequency feedthrough is non-positive "
-                    f"({g_inf_guess:.3e} uS); no passive zero-DC dummy "
-                    "compartment can realize this. Skipping."
-                )
-                continue
-
-            # the fExpFitter fits strictly-proper rational functions
-            # sum_n gamma_n / (s + alpha_n), so subtract the feedthrough
-            # before fitting.
-            y_target = dy_p - g_inf_guess
-
-            # split frequency samples into fit / validation subsets via
-            # even/odd interleaving (§14 of the formalism)
-            idx_fit = np.arange(0, len(s_arr), 2)
-            idx_val = np.arange(1, len(s_arr), 2)
-
-            best = None  # (err_hyb_val, alpha, gamma, Q)
-            for Q in range(
-                max(1, self.fit_cfg.min_degree),
-                self.fit_cfg.max_degree + 1,
-                2,
-            ):
-                try:
-                    alpha_fit, gamma_fit, _, rms = fef.fitFExp(
-                        s_arr[idx_fit],
-                        y_target[idx_fit],
-                        deg=Q,
-                        rtol=self.fit_cfg.max_rel_error,
-                        realpoles=True,
-                        initpoles="log10",
-                        zerostart=False,
-                        constrained=True,
-                    )
-                except Exception as exc:
-                    if pprint:
-                        print(
-                            f">>> admittance correction (host loc {p}, "
-                            f"degree {Q}): rational fit failed: {exc}"
-                        )
-                    continue
-
-                # reconstruct dummy admittance contribution from the
-                # accepted (passive) terms only
-                alpha_acc, c_acc = self._accept_passive_terms(
-                    alpha_fit, gamma_fit
-                )
-                if len(alpha_acc) == 0:
-                    continue
-
-                y_dum = np.zeros_like(s_arr)
-                for ar, gr in zip(alpha_acc, c_acc):
-                    # implemented branch is gc * s / (s + b)
-                    # gc = -gr / ar, b = ar (since fExpFitter returns
-                    # poles `alpha` so that the term is gamma / (s + alpha))
-                    gc_q = -gr / ar
-                    y_dum = y_dum + gc_q * s_arr / (s_arr + ar)
-
-                err_red_val = np.linalg.norm(
-                    y_full_p[idx_val] - y_red_p[idx_val]
-                )
-                err_hyb_val = np.linalg.norm(
-                    y_full_p[idx_val] - (y_red_p[idx_val] + y_dum[idx_val])
-                )
-
-                if best is None or err_hyb_val < best[0]:
-                    best = (err_hyb_val, alpha_acc, c_acc, Q)
-
-                # achieved relative error of the hybrid model on validation
-                rel_err = err_hyb_val / (
-                    np.linalg.norm(y_full_p[idx_val]) + 1e-30
-                )
-                if rel_err <= self.fit_cfg.max_rel_error:
+                if rms < self.fit_cfg.max_rel_error:
+                    print(f"Error criterion satisfied for Q = {Q} | {rms} < {self.fit_cfg.max_rel_error}, stopping fit.")
+                    print('alpha:\n', alphas, '\ngamma:\n', gammas)
                     break
 
-            if best is None:
-                warnings.warn(
-                    f"Admittance correction at host loc {p}: no physical "
-                    "passive rational fit could be obtained at any degree; "
-                    "no dummy compartments attached."
-                )
-                continue
+            # f_corr = Kernel((alphas*1e-3, gammas*1e-3))
+            # pl.figure(f"fit Q={Q}")
+            # pl.plot(s_arr.imag, dy_p.real, 'g', label="target real")
+            # pl.plot(s_arr.imag, dy_p.imag, 'g--', label="target real")
+            # pl.plot(s_arr.imag, np.abs(dy_p), 'g:', label="target real")
+            # pl.plot(s_arr.imag, f_corr.ft(s_arr).real + bias, 'y', label="fit real")
+            # pl.plot(s_arr.imag, f_corr.ft(s_arr).imag + bias, 'y--', label="fit imag")
+            # pl.plot(s_arr.imag, np.abs(f_corr.ft(s_arr)) + bias, 'y:', label="fit abs")
+            # pl.legend(loc=0)
+            # pl.show()
 
-            err_hyb_val, alpha_acc, c_acc, Q_used = best
-            err_red_val = np.linalg.norm(
-                y_full_p[idx_val] - y_red_p[idx_val]
-            )
-            denom = np.linalg.norm(y_full_p[idx_val]) + 1e-30
-            rel_err_hyb = err_hyb_val / denom
-            rel_err_red = err_red_val / denom
+            if pprint:
+                print("Original compartment tree:\n", ctree)
 
-            accept = False
-            if rel_err_hyb <= self.fit_cfg.max_rel_error:
-                accept = True
-            elif err_hyb_val < err_red_val:
-                accept = True
-                warnings.warn(
-                    f"Admittance correction at host loc {p}: target "
-                    f"accuracy {self.fit_cfg.max_rel_error:.2e} not reached "
-                    f"(achieved {rel_err_hyb:.2e}), but the fit improves "
-                    f"on the uncorrected residual "
-                    f"({rel_err_red:.2e}); keeping the fit."
-                )
-            else:
-                warnings.warn(
-                    f"Admittance correction at host loc {p}: rational fit "
-                    f"does not improve accuracy "
-                    f"(relative error {rel_err_hyb:.2e} vs uncorrected "
-                    f"{rel_err_red:.2e}); discarding."
-                )
-
-            if not accept:
-                continue
-
-            # ---- attach dummy compartments to the host ----
-            for ar, gr in zip(alpha_acc, c_acc):
+            # attach dummy compartments to the host nodes according to fit results
+            for ar, gr in zip(alphas, gammas):
                 b_q = float(ar.real)
                 gc_q = float((-gr / ar).real)
                 ca_q = gc_q / b_q
@@ -1489,55 +1420,9 @@ class CompartmentFitter(EquilibriumTree):
                 locs.append(None)
 
             if pprint:
-                print(
-                    f">>> admittance correction (host loc {p}): "
-                    f"attached {len(alpha_acc)} dummy compartment(s) "
-                    f"(degree {Q_used}, rel err {rel_err_hyb:.2e})."
-                )
-
-        # if the fit is stored, update the locs list accordingly
-        if isinstance(fit_arg, str):
-            self.fitted_models[fit_arg]["locs"] = locs
+                print(f"\nNew compartment tree after correcting compartment {host.index}:\n", ctree)
 
         return ctree, locs
-
-    @staticmethod
-    def _accept_passive_terms(alpha_fit, gamma_fit):
-        """
-        Filter pole/residue pairs from a strictly-proper rational fit, keeping
-        only those that map to a physical zero-leak passive dummy compartment.
-
-        The fExpFitter returns terms of the form ``gamma_n / (s + alpha_n)``.
-        A passive zero-leak dummy with admittance ``g_c · s / (s + b)`` has
-        pole-residue form ``g_c + (-g_c · b) / (s + b)``, so passivity
-        requires ``alpha_n.real > 0`` (stable pole) and ``gamma_n.real < 0``
-        (negative residue), with both being effectively real.
-
-        Returns
-        -------
-        alpha_acc: list of complex (with vanishing imaginary part)
-            Accepted poles ``b_q``.
-        gamma_acc: list of complex
-            Accepted residues ``r_q``.
-        """
-        alpha_acc = []
-        gamma_acc = []
-        if alpha_fit is None or len(alpha_fit) == 0:
-            return alpha_acc, gamma_acc
-        for ar, gr in zip(alpha_fit, gamma_fit):
-            # reject complex pole pairs: only real poles can be mapped to a
-            # single passive dummy compartment.
-            if abs(ar.imag) > 1e-6 * max(1.0, abs(ar.real)):
-                continue
-            if abs(gr.imag) > 1e-6 * max(1.0, abs(gr.real)):
-                continue
-            if ar.real <= 0.0:
-                continue
-            if gr.real >= 0.0:
-                continue
-            alpha_acc.append(complex(ar.real, 0.0))
-            gamma_acc.append(complex(gr.real, 0.0))
-        return alpha_acc, gamma_acc
 
     def fit_model(
         self,
@@ -1568,7 +1453,11 @@ class CompartmentFitter(EquilibriumTree):
             Indices into ``loc_arg`` (after bifurcation extension) selecting
             host compartments to which an admittance-kernel correction will be
             applied via additional passive dummy compartments. ``None`` or an
-            empty list disables the correction (default behavior).
+            empty list disables the correction (default behavior). Note that this
+            correction can result in negative couplings / capacitances of dummy
+            compartments, which NEURON / Brian 2 exports do not support. 
+            `NeuronCompartmentTree` and `Brian2CompartmentTree` will raise a warning 
+            and ignore the correction.
         pprint:  bool
             whether to print information
 

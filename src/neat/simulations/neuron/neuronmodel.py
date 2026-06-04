@@ -290,7 +290,7 @@ class NeuronSimNode(PhysNode):
             compartment.diam = (
                 2.0 * self.R
             )  # section radius [um] (NEURON takes diam = 2*r)
-            compartment.L = self.L  # section length [um]
+            compartment.L = max(1e-9, self.L)  # section length [um]
             # set number of segments
             if type(factorlambda) == float:
                 # nseg according to NEURON book

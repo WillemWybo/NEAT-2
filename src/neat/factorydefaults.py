@@ -137,11 +137,8 @@ class FitParams:
     min_degree: int = 4
     # admittance-kernel correction: maximal degree of the rational fit
     max_degree: int = 40
-    # admittance-kernel correction: frequency band over which the fit error is
-    # assessed (Hz)
-    freq_band: Tuple[float, float] = (1e1, 1e6)
     # admittance-kernel correction: maximum relative error of the fit
-    max_rel_error: float = 1e-2
+    max_rel_error: float = 1e-4
 
 
 @dataclass

@@ -1081,7 +1081,7 @@ class CompartmentTree(STree):
         zf_mat = self.calc_impedance_matrix(
             freqs=ft.freqs,
             channel_names=channel_names,
-            indexing=indexing,
+            indexing='tree',
             use_conc=use_conc,
         )
 
@@ -1112,6 +1112,16 @@ class CompartmentTree(STree):
                         method=method,
                     )
                 zt_mat[:, jj, ii] = zt_mat[:, ii, jj]
+
+
+        if indexing == "locs":
+            zt_mat = self._permuteToLocs(zt_mat)
+            if compute_time_derivative:
+                dzt_dt_mat = self._permuteToLocs(dzt_dt_mat)
+        elif indexing != "tree":
+            raise ValueError(
+                "invalid argument for `indexing`, has to be 'tree' or 'locs'"
+            )
 
         if compute_time_derivative:
             return zt_mat, dzt_dt_mat
