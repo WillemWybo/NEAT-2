@@ -1376,9 +1376,8 @@ class CompartmentFitter(EquilibriumTree):
                 )
                 if pprint:
                     print(
-                        f">>> admittance correction (host loc {loc_idx}, degree {Q}) rms = {rms}"
+                        f">>> admittance correction for host loc {loc_idx} and degree {Q}: rms = {rms}"
                     )
-                    print("fit done: rms = ", rms)
 
                 if rms < self.fit_cfg.max_rel_error:
                     print(

@@ -688,9 +688,11 @@ class TestReducedNeuron:
         # create the two compartment model without locinds
         self.load_two_compartment_model(w_locinds=False)
         ctree = self.ctree
-        # check if error is raised if loc_idxs have not been set
-        with pytest.raises(AttributeError):
-            ctree.calc_impedance_matrix()
+        # check if matrix is 2x2 if indexing=='tree' and 0x0 otherwise
+        zmat_tree = ctree.calc_impedance_matrix(indexing="tree")
+        zmat_locs = ctree.calc_impedance_matrix(indexing="locs")
+        assert zmat_tree.shape == (2, 2)
+        assert zmat_locs.shape == (0, 0)
 
         # create the two compartment model with locinds
         self.load_two_compartment_model()
@@ -1232,13 +1234,13 @@ if __name__ == "__main__":
     # tn.test_channel_recording()
     # tn.test_recording_timestep()
 
-    # trn = TestReducedNeuron()
+    trn = TestReducedNeuron()
     # trn.test_geometry1()
-    # trn.test_impedance_properties_1()
+    trn.test_impedance_properties_1()
     # trn.test_geometry2()
     # trn.test_impedance_properties_2()
 
-    ts = TestStimuli()
+    # ts = TestStimuli()
     # ts.test_i_clamp(pplot=True)
     # ts.test_ou_processes()
-    ts.test_input_spiketrain(pplot=True)
+    # ts.test_input_spiketrain(pplot=True)
