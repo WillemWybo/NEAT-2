@@ -903,6 +903,43 @@ class CompartmentTree(STree):
             if node.loc_idx is not None:
                 yield node
 
+    def has_correction_compartments(self):
+        """
+        Whether the tree contains admittance-kernel correction dummy
+        compartments. These are leaf nodes attached by
+        `CompartmentFitter.compute_admittance_correction` and are marked
+        by ``loc_idx is None`` (they have no associated location).
+
+        Returns
+        -------
+        bool
+        """
+        return any(node.loc_idx is None for node in self)
+
+    def remove_correction_compartments(self):
+        """
+        Remove all admittance-kernel correction dummy compartments
+        (those with ``loc_idx is None``) from the tree, in place.
+
+        Dummy compartments are always attached as leaves to a host
+        compartment (see
+        `CompartmentFitter.compute_admittance_correction`), so removing
+        them leaves the structure of the location-bearing compartments
+        intact. Because the dummies are always assigned the highest node
+        indices, the remaining (location-bearing) compartments keep a
+        consecutive ``0 .. N-1`` indexing.
+
+        Returns
+        -------
+        int
+            The number of dummy compartments that were removed.
+        """
+        dummy_nodes = [node for node in self if node.loc_idx is None]
+        for node in dummy_nodes:
+            # dummies are leaves, so this removes only the dummy itself
+            self.remove_node(node)
+        return len(dummy_nodes)
+
     def permute_to_tree_idxs(self):
         """
         Returns index array for the permutation of location indices to tree

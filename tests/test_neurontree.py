@@ -29,9 +29,10 @@ from neuron import h
 import pytest
 import itertools
 
-from neat import GreensTree
+from neat import GreensTree, PhysTree
 from neat import CompartmentNode, CompartmentTree
 from neat import NeuronSimTree, NeuronCompartmentTree
+from neat import CompartmentFitter
 from neat import check_for_coreneuron
 import neat.tools.kernelextraction as ke
 
@@ -442,6 +443,38 @@ class TestReducedNeuron:
         if w_locinds:
             self.add_locinds()
 
+    def load_T_tree(self, kernel_correction=None):
+        """
+        Load the T-tree morphology and fit a reduced model at the soma.
+
+        When ``kernel_correction=[0]`` is passed, an admittance-kernel
+        correction is applied to the (single) somatic compartment, which
+        attaches passive dummy compartments (``loc_idx is None``) to the
+        soma. These dummy compartments cannot be represented in NEURON and
+        should be ignored by `NeuronCompartmentTree`.
+        """
+        tree = PhysTree(
+            os.path.join(MORPHOLOGIES_PATH_PREFIX, "Ttree_segments.swc"),
+            types=[1, 2, 3, 4],
+        )
+        tree.set_physiology(1.0, 100.0 / 1e6)
+        k_chan = channelcollection.SKv3_1()
+        tree.add_channel_current(k_chan, 0.653374 * 1e6, -85.0, node_arg=[tree[1]])
+        na_chan = channelcollection.NaTa_t()
+        tree.add_channel_current(na_chan, 0.15 * 1e6, 50.0, node_arg=[tree[1]])
+        ca_chan = channelcollection.Ca_HVA()
+        tree.add_channel_current(
+            ca_chan, 0.005 * 1e6, 132.4579341637009, node_arg=[tree[1]]
+        )
+        tree.fit_leak_current(-70.0, 15.0)
+        self.tree = tree
+
+        # fit a single somatic compartment
+        cfit = CompartmentFitter(tree, save_cache=False, recompute_cache=True)
+        self.ctree, _ = cfit.fit_model(
+            [(1, 0.5)], kernel_correction=kernel_correction
+        )
+
     def test_neuroncompartmentree_instantiation(self):
         self.load_multi_dend_model()
         # correct initialization
@@ -450,6 +483,47 @@ class TestReducedNeuron:
         # initialization from incorrect tree
         with pytest.raises(ValueError):
             neuron_sim_tree = NeuronCompartmentTree(GreensTree())
+
+    def test_ignore_correction_compartments(self):
+        """
+        A somatic fit with an admittance-kernel correction attaches passive
+        dummy compartments (``loc_idx is None``) to the soma. These cannot be
+        represented in NEURON, so `NeuronCompartmentTree` must drop them (with
+        a warning) while leaving the location-bearing compartments intact.
+        """
+        self.load_T_tree(kernel_correction=[0])
+        ctree = self.ctree
+
+        # the correction should have induced dummy compartments
+        dummy_idxs = [n.index for n in ctree if n.loc_idx is None]
+        real_idxs = [n.index for n in ctree if n.loc_idx is not None]
+        assert len(dummy_idxs) > 0, (
+            "the somatic admittance correction did not induce any dummy "
+            "compartments; the test cannot verify they are ignored"
+        )
+        assert ctree.has_correction_compartments()
+
+        # building the NEURON model should warn about (and ignore) the dummies
+        with pytest.warns(UserWarning):
+            sim_tree = NeuronCompartmentTree(ctree)
+
+        # the location-bearing compartments are present in the NEURON model ...
+        for ri in real_idxs:
+            assert sim_tree[ri] is not None
+        # ... while the dummy compartments are absent
+        for di in dummy_idxs:
+            assert sim_tree[di] is None
+
+        # the number of NEURON sections matches the number of real compartments
+        assert len([n for n in sim_tree]) == len(real_idxs)
+
+        # the caller's tree must be left untouched (dummies still present)
+        assert ctree.has_correction_compartments()
+        assert len([n for n in ctree if n.loc_idx is None]) == len(dummy_idxs)
+
+        # the pruned model must be buildable (no non-physical geometry)
+        sim_tree.init_model(dt=0.1, t_calibrate=0.0)
+        sim_tree.delete_model()
 
     def test_geometry1(self):
         fake_c_m = 1.0

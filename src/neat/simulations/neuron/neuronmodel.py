@@ -1535,6 +1535,22 @@ class NeuronCompartmentTree(NeuronSimTree):
                 "`neat.NeuronCompartmentTree` can only be instantiated "
                 "from a `neat.CompartmentTree` or derived class"
             )
+        # Admittance-kernel correction dummy compartments (loc_idx is None)
+        # cannot be realized as NEURON sections: they have `g_l = 0` and the
+        # fake-geometry solve can produce non-physical (negative) radii /
+        # lengths for them. The correction is only meaningful for the
+        # NEST / analytic models, so we drop the dummy compartments here
+        # (working on a copy so the caller's tree is left untouched).
+        if ctree.has_correction_compartments():
+            warnings.warn(
+                "The compartment tree contains admittance-kernel correction "
+                "dummy compartments (loc_idx is None), which cannot be "
+                "represented in NEURON. They are ignored when building the "
+                "`NeuronCompartmentTree`.",
+                UserWarning,
+            )
+            ctree = ctree.__copy__()
+            ctree.remove_correction_compartments()
         super().__init__(ctree, types=[1, 3, 4])
         self.equivalent_locs = ctree.get_equivalent_locs()
         self._create_reduced_neuron_model(
