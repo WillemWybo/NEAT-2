@@ -506,10 +506,7 @@ class TestNest:
             ax.plot(res_nest["times"], res_nest[f"h_NaTa_t{dend_idx}"], "g--", lw=2)
             pl.show()
 
-
-    def _simulate_nest_dc_step(
-        self, ctree, amp, delay, dur, cal, dt, tmax
-    ):
+    def _simulate_nest_dc_step(self, ctree, amp, delay, dur, cal, dt, tmax):
         """
         Inject a somatic DC current step into a NEST reduction of `ctree`
         and return the somatic voltage trace (time aligned so that ``t = 0``
@@ -546,9 +543,7 @@ class TestNest:
             },
         )
         # somatic voltage recording
-        mm = nest.Create(
-            "multimeter", 1, {"record_from": ["v_comp0"], "interval": dt}
-        )
+        mm = nest.Create("multimeter", 1, {"record_from": ["v_comp0"], "interval": dt})
         nest.Connect(mm, nestmodel)
 
         nest.Simulate(cal + tmax)
@@ -639,9 +634,7 @@ class TestNest:
             pl.figure("admittance correction DC step")
             pl.plot(t_full[:imax], d_full, "g-", label="full (NEURON)")
             pl.plot(t_red[:imax], d_red, "b--", label="reduction (NEST)")
-            pl.plot(
-                t_hyb[:imax], d_hyb, "r-.", label="reduction + correction (NEST)"
-            )
+            pl.plot(t_hyb[:imax], d_hyb, "r-.", label="reduction + correction (NEST)")
             pl.xlabel("t [ms]")
             pl.ylabel(r"$\Delta v$ [mV]")
             pl.legend(loc=0)
@@ -649,7 +642,7 @@ class TestNest:
 
         # the corrected reduction must track the full model much better
         # as the uncorrected one
-        assert rmse_hyb < .1 * rmse_red
+        assert rmse_hyb < 0.1 * rmse_red
 
 
 if __name__ == "__main__":

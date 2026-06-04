@@ -36,7 +36,7 @@ from neat import (
     CompartmentTree,
     CachedGreensTree,
     check_for_coreneuron,
-    FourierTools
+    FourierTools,
 )
 import neat.modelreduction.compartmentfitter as compartmentfitter
 
@@ -879,7 +879,9 @@ class TestAdmittanceCorrection:
         self.load_ball()
         cm = CompartmentFitter(self.tree, save_cache=False, recompute_cache=True)
         ctree, locs = cm.fit_model(
-            [(1, 0.5)], kernel_correction=[0], pprint=False,
+            [(1, 0.5)],
+            kernel_correction=[0],
+            pprint=False,
         )
         # no dummies attached
         assert len(ctree) == 1
@@ -894,11 +896,15 @@ class TestAdmittanceCorrection:
         """
         self.load_ball_and_stick()
         cm = CompartmentFitter(
-            self.tree, save_cache=False, recompute_cache=True,
+            self.tree,
+            save_cache=False,
+            recompute_cache=True,
         )
         fit_locs = [(1, 0.5), (4, 0.5)]
         ctree, locs = cm.fit_model(
-            fit_locs, kernel_correction=[0], pprint=False,
+            fit_locs,
+            kernel_correction=[0],
+            pprint=False,
         )
         # every dummy compartment has g_l = 0 and e_eq matching its host
         n_dummies = 0
@@ -928,7 +934,9 @@ class TestAdmittanceCorrection:
         )
         # compare against the same model rebuilt without kernel correction
         cm2 = CompartmentFitter(
-            self.tree, save_cache=False, recompute_cache=True,
+            self.tree,
+            save_cache=False,
+            recompute_cache=True,
         )
         ctree_ref, _ = cm2.fit_model(fit_locs, pprint=False)
         z_red = ctree_ref.calc_impedance_matrix(
@@ -944,21 +952,27 @@ class TestAdmittanceCorrection:
         correction, on the configured frequency band.
         """
         self.load_T_tree()
-        fit_locs = [(1, 0.5)]#, (4, 1.0), (5, 0.5), (8, 0.5)]
+        fit_locs = [(1, 0.5)]  # , (4, 1.0), (5, 0.5), (8, 0.5)]
 
         cm = CompartmentFitter(
-            self.tree, save_cache=False, recompute_cache=True,
+            self.tree,
+            save_cache=False,
+            recompute_cache=True,
         )
         ctree_red, _ = cm.fit_model(fit_locs, pprint=False)
 
         cm2 = CompartmentFitter(
-            self.tree, save_cache=False, recompute_cache=True,
+            self.tree,
+            save_cache=False,
+            recompute_cache=True,
         )
         ctree_hyb, locs_hyb = cm2.fit_model(
-            fit_locs, kernel_correction=[0], pprint=False,
+            fit_locs,
+            kernel_correction=[0],
+            pprint=False,
         )
 
-        t_arr = np.linspace(0.0, 50., 1000)
+        t_arr = np.linspace(0.0, 50.0, 1000)
         gtt = GreensTreeTime(self.tree)
         gtt.set_impedance(t_arr)
         zt0 = gtt.calc_zt((1, 0.5), (1, 0.5), compute_time_derivative=False)
@@ -970,7 +984,7 @@ class TestAdmittanceCorrection:
         errt_hyb = np.linalg.norm(zt0 - z_hyb[:, 0, 0])
 
         # test whetehrcorrection significantlys reduce time-domain error
-        assert errt_hyb < errt_red - np.abs(errt_red - 1e1) 
+        assert errt_hyb < errt_red - np.abs(errt_red - 1e1)
 
         # from neat import NestCompartmentTree
         # # t1 = NeuronCompartmentTree(ctree_hyb)
@@ -982,9 +996,10 @@ class TestAdmittanceCorrection:
 
         if pplot:
             import matplotlib.pyplot as plt
-            plt.plot(t_arr, zt0, 'g', label="full")
-            plt.plot(t_arr, z_red[:, 0, 0], 'b', label="default")
-            plt.plot(t_arr, z_hyb[:, 0, 0], 'r--', label="corrected")
+
+            plt.plot(t_arr, zt0, "g", label="full")
+            plt.plot(t_arr, z_red[:, 0, 0], "b", label="default")
+            plt.plot(t_arr, z_hyb[:, 0, 0], "r--", label="corrected")
             plt.show()
 
         # admittance comparison on the same grid the correction uses
@@ -997,12 +1012,16 @@ class TestAdmittanceCorrection:
         y_full_0 = 1.0 / z_full[:, 0, 0]
 
         z_red = ctree_red.calc_impedance_matrix(
-            freqs=s_arr, channel_names=["L"], indexing="locs",
+            freqs=s_arr,
+            channel_names=["L"],
+            indexing="locs",
         )
         y_red_0 = 1.0 / z_red[:, 0, 0]
 
         z_hyb = ctree_hyb.calc_impedance_matrix(
-            freqs=s_arr, channel_names=["L"], indexing="locs",
+            freqs=s_arr,
+            channel_names=["L"],
+            indexing="locs",
         )
         # extract the host's diagonal in the location-indexed matrix
         y_hyb_0 = 1.0 / z_hyb[:, 0, 0]
@@ -1022,15 +1041,21 @@ class TestAdmittanceCorrection:
         fit_locs = [(1, 0.5)]
 
         cm = CompartmentFitter(
-            self.tree, save_cache=False, recompute_cache=True,
+            self.tree,
+            save_cache=False,
+            recompute_cache=True,
         )
         ctree_red, _ = cm.fit_model(fit_locs, pprint=False)
 
         cm2 = CompartmentFitter(
-            self.tree, save_cache=False, recompute_cache=True,
+            self.tree,
+            save_cache=False,
+            recompute_cache=True,
         )
         ctree_hyb, locs_hyb = cm2.fit_model(
-            fit_locs, kernel_correction=[0], pprint=False,
+            fit_locs,
+            kernel_correction=[0],
+            pprint=False,
         )
 
         # admittance comparison on the same grid the correction uses
@@ -1043,12 +1068,16 @@ class TestAdmittanceCorrection:
         y_full_0 = 1.0 / z_full[:, 0, 0]
 
         z_red = ctree_red.calc_impedance_matrix(
-            freqs=s_arr, channel_names=["L"], indexing="locs",
+            freqs=s_arr,
+            channel_names=["L"],
+            indexing="locs",
         )
         y_red_0 = 1.0 / z_red[:, 0, 0]
 
         z_hyb = ctree_hyb.calc_impedance_matrix(
-            freqs=s_arr, channel_names=["L"], indexing="locs",
+            freqs=s_arr,
+            channel_names=["L"],
+            indexing="locs",
         )
         y_hyb_0 = 1.0 / z_hyb[:, 0, 0]
 

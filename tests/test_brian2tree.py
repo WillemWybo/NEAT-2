@@ -365,9 +365,7 @@ class TestBrian2:
 
         # building the Brian2 model should warn about (and ignore) the dummies
         with pytest.warns(UserWarning):
-            bct = Brian2CompartmentTree(
-                ctree, channel_storage=ctree.channel_storage
-            )
+            bct = Brian2CompartmentTree(ctree, channel_storage=ctree.channel_storage)
 
         # the dummy compartments are dropped from the Brian2 tree ...
         assert not bct.has_correction_compartments()

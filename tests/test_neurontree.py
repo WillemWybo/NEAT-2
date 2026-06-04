@@ -471,9 +471,7 @@ class TestReducedNeuron:
 
         # fit a single somatic compartment
         cfit = CompartmentFitter(tree, save_cache=False, recompute_cache=True)
-        self.ctree, _ = cfit.fit_model(
-            [(1, 0.5)], kernel_correction=kernel_correction
-        )
+        self.ctree, _ = cfit.fit_model([(1, 0.5)], kernel_correction=kernel_correction)
 
     def test_neuroncompartmentree_instantiation(self):
         self.load_multi_dend_model()

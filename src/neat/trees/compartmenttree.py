@@ -946,9 +946,7 @@ class CompartmentTree(STree):
         indices. Skips dummy nodes (those with `loc_idx is None`); the returned
         array has length equal to the number of location-bearing nodes.
         """
-        return np.array(
-            [node.loc_idx for node in self._iter_loc_nodes()], dtype=int
-        )
+        return np.array([node.loc_idx for node in self._iter_loc_nodes()], dtype=int)
 
     def _permute_to_tree(self, mat):
         """
@@ -1118,7 +1116,7 @@ class CompartmentTree(STree):
         zf_mat = self.calc_impedance_matrix(
             freqs=ft.freqs,
             channel_names=channel_names,
-            indexing='tree',
+            indexing="tree",
             use_conc=use_conc,
         )
 
@@ -1149,7 +1147,6 @@ class CompartmentTree(STree):
                         method=method,
                     )
                 zt_mat[:, jj, ii] = zt_mat[:, ii, jj]
-
 
         if indexing == "locs":
             zt_mat = self._permuteToLocs(zt_mat)

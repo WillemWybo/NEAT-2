@@ -1234,9 +1234,7 @@ class CompartmentFitter(EquilibriumTree):
 
         return ctree, locs
 
-    def compute_admittance_correction(
-        self, fit_arg, kernel_correction, pprint=False
-    ):
+    def compute_admittance_correction(self, fit_arg, kernel_correction, pprint=False):
         """
         Add admittance-kernel-correcting dummy compartments to a set of host
         compartments in the reduced model.
@@ -1299,7 +1297,9 @@ class CompartmentFitter(EquilibriumTree):
                 )
 
         # frequency grid for admittance evaluation and fitting
-        ft = FourierTools(np.array([0.,0.1])) # dummy time array, we don't need it here
+        ft = FourierTools(
+            np.array([0.0, 0.1])
+        )  # dummy time array, we don't need it here
         s_arr = ft.freqs_vfit
 
         # input impedances full model
@@ -1335,12 +1335,14 @@ class CompartmentFitter(EquilibriumTree):
 
             # somatic capacitance correction
             idx_bool = np.abs(s_arr) > 1e3
-            (dca,), _, _, _ = np.linalg.lstsq(s_arr[idx_bool][:,None].imag, dy_p[idx_bool].imag, rcond=None)
+            (dca,), _, _, _ = np.linalg.lstsq(
+                s_arr[idx_bool][:, None].imag, dy_p[idx_bool].imag, rcond=None
+            )
             if pprint:
-                print(f'somatic capcitance correction dca = {dca} uF')
+                print(f"somatic capcitance correction dca = {dca} uF")
             # apply capacitance correction to the host compartment and the residual
             host.ca += dca
-            dy_p -= (dca * s_arr)
+            dy_p -= dca * s_arr
 
             # pl.figure("impedance full/red")
             # ax1, ax2, ax3 = pl.subplot(311), pl.subplot(312), pl.subplot(313)
@@ -1353,13 +1355,13 @@ class CompartmentFitter(EquilibriumTree):
             # ax2.plot(s_arr.imag, (dca * s_arr).real, 'y', label="fit real")
             # ax2.plot(s_arr.imag, (dca * s_arr).imag, 'y--', label="fit imag")
             # ax2.plot(s_arr.imag, np.abs(dca * s_arr), 'y:', label="fit abs")
-            
+
             # ax3.plot(s_arr.imag, (dy_p - (dca * s_arr)).real, 'm', label="residual real")
             # ax3.plot(s_arr.imag, (dy_p - (dca * s_arr)).imag, 'm--', label="residual imag")
             # ax3.plot(s_arr.imag, np.abs(dy_p - (dca * s_arr)), 'm:', label="residual abs")
             # pl.show()
 
-            for Q in range(self.fit_cfg.min_degree, self.fit_cfg.max_degree+1, 4):
+            for Q in range(self.fit_cfg.min_degree, self.fit_cfg.max_degree + 1, 4):
                 alphas, gammas, _, rms = fef.fitFExp(
                     s_arr,
                     dy_p,
@@ -1370,15 +1372,19 @@ class CompartmentFitter(EquilibriumTree):
                     zerostart=False,
                     constrained=True,
                     reduce_numexp=False,
-                    return_real=True
+                    return_real=True,
                 )
                 if pprint:
-                    print(f">>> admittance correction (host loc {loc_idx}, degree {Q}) rms = {rms}")
-                    print('fit done: rms = ', rms)
+                    print(
+                        f">>> admittance correction (host loc {loc_idx}, degree {Q}) rms = {rms}"
+                    )
+                    print("fit done: rms = ", rms)
 
                 if rms < self.fit_cfg.max_rel_error:
-                    print(f"Error criterion satisfied for Q = {Q} | {rms} < {self.fit_cfg.max_rel_error}, stopping fit.")
-                    print('alpha:\n', alphas, '\ngamma:\n', gammas)
+                    print(
+                        f"Error criterion satisfied for Q = {Q} | {rms} < {self.fit_cfg.max_rel_error}, stopping fit."
+                    )
+                    print("alpha:\n", alphas, "\ngamma:\n", gammas)
                     break
 
             # f_corr = Kernel((alphas*1e-3, gammas*1e-3))
@@ -1403,7 +1409,10 @@ class CompartmentFitter(EquilibriumTree):
 
                 dummy_idx = max(n.index for n in ctree) + 1
                 dummy = ctree.create_corresponding_node(
-                    dummy_idx, ca=ca_q, g_c=gc_q, g_l=0.0,
+                    dummy_idx,
+                    ca=ca_q,
+                    g_c=gc_q,
+                    g_l=0.0,
                 )
                 # dummy has no associated MorphLoc
                 dummy.loc_idx = None
@@ -1420,7 +1429,10 @@ class CompartmentFitter(EquilibriumTree):
                 locs.append(None)
 
             if pprint:
-                print(f"\nNew compartment tree after correcting compartment {host.index}:\n", ctree)
+                print(
+                    f"\nNew compartment tree after correcting compartment {host.index}:\n",
+                    ctree,
+                )
 
         return ctree, locs
 
@@ -1455,8 +1467,8 @@ class CompartmentFitter(EquilibriumTree):
             applied via additional passive dummy compartments. ``None`` or an
             empty list disables the correction (default behavior). Note that this
             correction can result in negative couplings / capacitances of dummy
-            compartments, which NEURON / Brian 2 exports do not support. 
-            `NeuronCompartmentTree` and `Brian2CompartmentTree` will raise a warning 
+            compartments, which NEURON / Brian 2 exports do not support.
+            `NeuronCompartmentTree` and `Brian2CompartmentTree` will raise a warning
             and ignore the correction.
         pprint:  bool
             whether to print information
@@ -1500,7 +1512,9 @@ class CompartmentFitter(EquilibriumTree):
         # admittance-kernel correction by dummy compartments
         if kernel_correction:
             fit_arg = self.compute_admittance_correction(
-                fit_arg, kernel_correction, pprint=pprint,
+                fit_arg,
+                kernel_correction,
+                pprint=pprint,
             )
 
         if fit_name == "temp":
