@@ -635,7 +635,10 @@ class PhysTree(MorphTree):
         if len(nodes_with_channel) > 0:
             self.channel_storage[channel_name] = channel
         else:
-            warnings.warn("This node argument does not return any nodes in this tree, no channel was added.")
+            warnings.warn(
+                "Node argument `{node_arg}` does not return any nodes in this tree, " + \
+                f"no `{channel_name}` channel was added."
+            )
             return None
 
         channel = self.channel_storage[channel_name]
