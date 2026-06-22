@@ -636,7 +636,7 @@ class PhysTree(MorphTree):
             self.channel_storage[channel_name] = channel
         else:
             warnings.warn(
-                "Node argument `{node_arg}` does not return any nodes in this tree, " + \
+                f"Node argument `{node_arg}` does not return any nodes in this tree, " + \
                 f"no `{channel_name}` channel was added."
             )
             return None
