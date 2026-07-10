@@ -507,13 +507,19 @@ class MorphTree(STree):
         Returns:
             `neat.MorphNode` or None
         """
+        # the cached lookup builds its map from `self.__iter__`, which skips the
+        # soma helper nodes 2 and 3; it therefore matches only the default
+        # `skip_inds`. Any other `skip_inds` uses the uncached search.
+        if tuple(skip_inds) == (2, 3):
+            return self._node_from_index(index, self.root)
         return self._find_node(self.root, index, skip_inds=skip_inds)
 
     def _find_node(self, node, index, skip_inds=(2, 3)):
         """
-        Breadth-first/stack iteration to replace the recursive call.
-        Traverses the tree until it finds the node you are looking for.
-        Returns SNode when found and None when not found
+        Iterative depth-first search for the node with the given ``index``,
+        starting from ``node``, skipping the node indices in ``skip_inds``.
+        Returns the `neat.MorphNode` when found and ``None`` otherwise. Used as
+        an uncached fallback by `__getitem__`.
 
         Parameters
         ----------
@@ -526,15 +532,12 @@ class MorphTree(STree):
         -------
             :class:`SNode`
         """
-        stack = []
-        stack.append(node)
-        while len(stack) != 0:
-            for cnode in stack:
-                if cnode.index == index:
-                    return cnode
-                else:
-                    stack.remove(cnode)
-                    stack.extend(cnode.get_child_nodes(skip_inds=skip_inds))
+        stack = [node] if node is not None else []
+        while stack:
+            cnode = stack.pop()
+            if cnode.index == index:
+                return cnode
+            stack.extend(cnode.get_child_nodes(skip_inds=skip_inds))
         return None  # Not found!
 
     def __iter__(self, node=None, skip_inds=(2, 3)):
@@ -572,6 +575,7 @@ class MorphTree(STree):
         """
         for ind, node in enumerate(self):
             node.index = ind + 1
+        self._invalidate_index_cache()
 
     def get_nodes(self, skip_inds=(2, 3)):
         """
@@ -1119,11 +1123,18 @@ class MorphTree(STree):
         compnode_indices = [node.index for node in compnodes]
         nodes = copy.deepcopy(self.nodes)
 
+        # Map the original-tree nodes by index once. The loop below only mutates
+        # the deep-copied `nodes` (the future computational tree) via
+        # `remove_single_node`; the original tree -- and hence this map -- stays
+        # valid throughout, so we avoid the repeated `self[...]` lookups whose
+        # cache would otherwise be invalidated on every `remove_single_node`.
+        orig_by_index = {onode.index: onode for onode in self}
+
         for node in nodes:
             if node.index not in compnode_indices:
                 self.remove_single_node(node)
             elif node.parent_node != None:
-                orig_node = self[node.index]
+                orig_node = orig_by_index[node.index]
                 orig_bnode = node.parent_node
                 L, R = self.path_length(
                     {"node": orig_bnode.index, "x": 1.0},
@@ -1135,7 +1146,7 @@ class MorphTree(STree):
                 node.used_in_comp_tree = True
                 orig_node.used_in_comp_tree = True
             else:
-                orig_node = self[node.index]
+                orig_node = orig_by_index[node.index]
                 node.used_in_comp_tree = True
                 orig_node.used_in_comp_tree = True
 
