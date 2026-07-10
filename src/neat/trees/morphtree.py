@@ -2554,9 +2554,7 @@ class MorphTree(STree):
         # tree so that boundary aliasing does not require the O(n) `self[index]`
         # search per location
         parent_idx = {
-            node.index: (
-                node.parent_node.index if node.parent_node is not None else -1
-            )
+            node.index: (node.parent_node.index if node.parent_node is not None else -1)
             for node in self
         }
 
