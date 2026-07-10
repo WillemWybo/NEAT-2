@@ -23,6 +23,8 @@ import numpy as np
 
 import copy
 import warnings
+from functools import wraps
+from inspect import signature
 
 from . import morphtree
 from .morphtree import MorphNode, MorphTree, MorphLoc
@@ -40,13 +42,14 @@ def comptree_removal_decorator(fun):
     """
 
     # wrapper to access self
+    @wraps(fun)
     def wrapped(self, *args, **kwargs):
         with self.as_original_tree:
             res = fun(self, *args, **kwargs)
         self._computational_root = None
         return res
 
-    wrapped.__doc__ = fun.__doc__
+    wrapped.__signature__ = signature(fun)
     return wrapped
 
 
@@ -884,11 +887,14 @@ class PhysTree(MorphTree):
             The location corresponding to the compartments of the finite
             difference approximation
         """
+        print("(i)")
         locs = self.distribute_locs_finite_diff(dx_max=dx_max, name=name)
 
+        print("(ii)")
         aux_tree = self.create_new_tree(locs, new_tree=PhysTree())
+        print("(iii)")
         fd_tree = self.create_compartment_tree(locs)
-
+        print("(iv)")
         fd_nodes = fd_tree.nodes
         aux_nodes = aux_tree.nodes
 
@@ -954,7 +960,7 @@ class PhysTree(MorphTree):
                         )
                     else:
                         fd_parent.currents[chan] = (0.0, e_parent)
-
+        print("(v)")
         # set concentration mechanisms in separate pass
         for ii in range(len(locs)):
             fd_node = fd_nodes[ii]
@@ -976,5 +982,5 @@ class PhysTree(MorphTree):
 
                 fd_node.concmechs[ion] = copy.deepcopy(aux_node.concmechs[ion])
                 fd_node.concmechs[ion].gamma *= ion_factors_aux / ion_factors_fd
-
+        print("(vi)")
         return fd_tree, locs

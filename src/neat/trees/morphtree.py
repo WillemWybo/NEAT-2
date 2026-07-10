@@ -31,7 +31,8 @@ import copy
 import pathlib
 import warnings
 from typing import Literal
-from functools import reduce
+from functools import reduce, wraps
+from inspect import signature
 from contextlib import contextmanager
 
 from .stree import SNode, STree
@@ -53,6 +54,7 @@ def computational_tree_decorator(fun):
     """
 
     # wrapper to access self
+    @wraps(fun)
     def wrapped(self, *args, **kwargs):
         if self._computational_root is None:
             raise AttributeError(
@@ -66,7 +68,7 @@ def computational_tree_decorator(fun):
             res = fun(self, *args, **kwargs)
         return res
 
-    wrapped.__doc__ = fun.__doc__
+    wrapped.__signature__ = signature(fun)
     return wrapped
 
 
@@ -77,12 +79,13 @@ def original_tree_decorator(fun):
     """
 
     # wrapper to access self
+    @wraps(fun)
     def wrapped(self, *args, **kwargs):
         with self.as_original_tree:
             res = fun(self, *args, **kwargs)
         return res
 
-    wrapped.__doc__ = fun.__doc__
+    wrapped.__signature__ = signature(fun)
     return wrapped
 
 
@@ -2521,7 +2524,66 @@ class MorphTree(STree):
             the bifurcation locs
         """
         locs = self.convert_loc_arg_to_locs(loc_arg)
-        locs_ = reduce(lambda l, x: l.append(x) or l if x not in l else l, locs, [])
+
+        # Deduplicate by mapping each location onto a hashable canonical key
+        # instead of the O(n^2) `x not in l` membership test with the expensive
+        # `MorphLoc.__eq__`. The key reproduces the equality relation of
+        # `MorphLoc.__eq__` exactly:
+        #   - all locations on the soma (node 1) are equal (any `x`),
+        #   - a location at `x ~ 0` coincides with the `x ~ 1` end of its parent
+        #     node (chaining to the soma if the parent is the soma),
+        #   - a location at `x ~ 1` coincides with the `x ~ 1` end of that node,
+        #   - interior locations are equal iff they lie on the same node with
+        #     `np.allclose` `x`.
+        # Locations aliased to a parent (for `x ~ 0`) are only aliased for the
+        # purpose of the key: the original location object, with its exact
+        # coordinates, is what gets kept and returned/stored.
+        eps = 1e-8
+        # parent-index lookup, built in a single O(n) pass over the (active)
+        # tree so that boundary aliasing does not require the O(n) `self[index]`
+        # search per location
+        parent_idx = {
+            node.index: (
+                node.parent_node.index if node.parent_node is not None else -1
+            )
+            for node in self
+        }
+
+        def _top_key(idx):
+            # canonical key for the `x = 1` end of node `idx`; the soma collapses
+            # to a single key
+            return ("soma",) if idx == 1 else ("top", idx)
+
+        locs_ = []
+        seen_keys = set()  # keys for soma / `x ~ 0` / `x ~ 1` equivalence classes
+        interior_xs = {}  # node index -> list of kept interior `x` values
+        for loc in locs:
+            n, x = loc["node"], loc["x"]
+            if n == 1:
+                key = ("soma",)
+            elif x < eps:
+                # coincides with the `x = 1` end of the parent node
+                key = _top_key(parent_idx[n])
+            elif (1.0 - x) < eps:
+                key = ("top", n)
+            else:
+                key = None  # interior location, handled via `np.allclose` below
+
+            if key is not None:
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+            else:
+                # interior locations are only equal to previously kept interior
+                # locations on the same node (typically a very small group), so
+                # the `np.allclose` comparison stays exact and cheap. The
+                # argument order matches `MorphLoc.__eq__` (`kept == candidate`).
+                xs = interior_xs.setdefault(n, [])
+                if any(np.allclose(x_kept, x) for x_kept in xs):
+                    continue
+                xs.append(x)
+
+            locs_.append(loc)
 
         if name != "dont save":
             self.store_locs(locs_, name=name)
